@@ -1,0 +1,261 @@
+{
+  "name": "2. Database Backup",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 * * *"
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Daily at 2:00 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "powershell.exe -ExecutionPolicy Bypass -File C:\\mis-assistant\\scripts\\backup-databases.ps1",
+        "options": {}
+      },
+      "id": "execute-backup-script",
+      "name": "Run Backup Script",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse the backup script JSON output\nconst output = $input.first().json.stdout;\n\n// Find JSON in output\nconst jsonMatch = output.match(/\\{[\\s\\S]*\"Timestamp\"[\\s\\S]*\\}/m);\n\nif (!jsonMatch) {\n  return [{\n    json: {\n      error: true,\n      message: \"Cannot parse backup output\",\n      rawOutput: output\n    }\n  }];\n}\n\nconst report = JSON.parse(jsonMatch[0]);\n\n// Check success\nconst allSuccess = report.Success && (report.FailedBackups === 0);\n\nreturn [{\n  json: {\n    ...report,\n    allSuccess\n  }\n}];"
+      },
+      "id": "parse-backup-json",
+      "name": "Parse Backup Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.allSuccess }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-backup-success",
+      "name": "All Success?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format success message\nconst data = $input.first().json;\n\nlet message = `✅ Database Backup Completed\\n`;\nmessage += `━━━━━━━━━━━━━━━━━━━\\n\\n`;\nmessage += `⏰ Time: ${data.Timestamp}\\n`;\nmessage += `⏱️ Duration: ${data.Duration}\\n\\n`;\n\nmessage += `📦 MySQL Containers: ${data.MySQLContainersFound}\\n`;\nmessage += `✅ Successful: ${data.SuccessfulBackups}\\n`;\nmessage += `❌ Failed: ${data.FailedBackups}\\n\\n`;\n\nif (data.Backups && data.Backups.length > 0) {\n  message += `📋 Backup Files:\\n`;\n  data.Backups.forEach(backup => {\n    message += `• ${backup.Database}\\n`;\n    message += `  Container: ${backup.Container}\\n`;\n    if (backup.CompressedSizeMB) {\n      message += `  Size: ${backup.CompressedSizeMB} MB\\n`;\n      message += `  Compression: ${backup.CompressionRatio}\\n`;\n    } else {\n      message += `  Size: ${backup.SizeMB} MB\\n`;\n    }\n  });\n}\n\nmessage += `\\n💾 Total Size: ${data.TotalSizeMB} MB\\n`;\nmessage += `📁 Location: ${data.BackupFolder}\\n`;\nmessage += `\\n━━━━━━━━━━━━━━━━━━━`;\n\nreturn [{\n  json: {\n    message: message\n  }\n}];"
+      },
+      "id": "format-success-message",
+      "name": "Format Success Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format failure message\nconst data = $input.first().json;\n\nlet message = `🚨 Database Backup Failed!\\n`;\nmessage += `━━━━━━━━━━━━━━━━━━━\\n\\n`;\nmessage += `⏰ Time: ${data.Timestamp}\\n\\n`;\n\nmessage += `✅ Successful: ${data.SuccessfulBackups}\\n`;\nmessage += `❌ Failed: ${data.FailedBackups}\\n\\n`;\n\nif (data.Failures && data.Failures.length > 0) {\n  message += `❌ Failed Backups:\\n`;\n  data.Failures.forEach(failure => {\n    message += `• ${failure.Database || failure.Container}\\n`;\n    message += `  Error: ${failure.Error}\\n`;\n  });\n  message += `\\n`;\n}\n\nif (data.Backups && data.Backups.length > 0) {\n  message += `✅ Successful Backups:\\n`;\n  data.Backups.forEach(backup => {\n    message += `• ${backup.Database} (${backup.CompressedSizeMB || backup.SizeMB} MB)\\n`;\n  });\n}\n\nmessage += `\\n⚠️ Please check logs for details.`;\n\nreturn [{\n  json: {\n    message: message\n  }\n}];"
+      },
+      "id": "format-failure-message",
+      "name": "Format Failure Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {}
+      },
+      "id": "send-success-telegram",
+      "name": "Send Success",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [
+        1340,
+        200
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-api-cred",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {}
+      },
+      "id": "send-failure-telegram",
+      "name": "Send Failure Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [
+        1340,
+        400
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-api-cred",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "powershell.exe -ExecutionPolicy Bypass -File C:\\mis-assistant\\scripts\\cleanup-old-backups.ps1",
+        "options": {}
+      },
+      "id": "cleanup-old-backups",
+      "name": "Cleanup Old Backups",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1560,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Daily at 2:00 AM": {
+      "main": [
+        [
+          {
+            "node": "Run Backup Script",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Backup Script": {
+      "main": [
+        [
+          {
+            "node": "Parse Backup Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Backup Output": {
+      "main": [
+        [
+          {
+            "node": "All Success?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "All Success?": {
+      "main": [
+        [
+          {
+            "node": "Format Success Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Failure Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Success Message": {
+      "main": [
+        [
+          {
+            "node": "Send Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Failure Message": {
+      "main": [
+        [
+          {
+            "node": "Send Failure Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Success": {
+      "main": [
+        [
+          {
+            "node": "Cleanup Old Backups",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Failure Alert": {
+      "main": [
+        [
+          {
+            "node": "Cleanup Old Backups",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "id": "database-backup-workflow",
+  "meta": {
+    "instanceId": "mis-assistant"
+  },
+  "tags": []
+}

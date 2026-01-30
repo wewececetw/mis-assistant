@@ -1,0 +1,147 @@
+# ========================================
+# MIS 自動化助理系統 - Docker Compose 配置
+# ========================================
+# 核心服務: n8n (自動化引擎) + cAdvisor (容器監控)
+# version 已移除 (Docker Compose v2 不需要)
+
+services:
+  # ========================================
+  # n8n - 工作流程自動化引擎
+  # ========================================
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n-mis
+    restart: unless-stopped
+
+    ports:
+      - "5678:5678"  # n8n Web UI
+
+    environment:
+      # 基本認證
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER:-barron}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD}
+
+      # 時區設定
+      - GENERIC_TIMEZONE=${TZ:-Asia/Taipei}
+      - TZ=${TZ:-Asia/Taipei}
+
+      # n8n 核心配置
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678
+
+      # 資料持久化路徑
+      - N8N_USER_FOLDER=/home/node/.n8n
+
+      # 執行環境變數 (供工作流程使用)
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - CPU_THRESHOLD=${CPU_THRESHOLD:-80}
+      - MEMORY_THRESHOLD=${MEMORY_THRESHOLD:-90}
+      - DISK_THRESHOLD=${DISK_THRESHOLD:-10}
+      - RESTART_THRESHOLD=${RESTART_THRESHOLD:-3}
+      - BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-7}
+      - BACKUP_PATH=${BACKUP_PATH:-C:\\mis-assistant\\backups}
+
+    volumes:
+      # n8n 資料持久化
+      - n8n_data:/home/node/.n8n
+
+      # 工作流程定義檔 (只讀)
+      - ./workflows:/workflows:ro
+
+      # 備份目錄 (讀寫)
+      - ./backups:/backups
+
+      # 日誌目錄 (讀寫)
+      - ./logs:/logs
+
+      # PowerShell 腳本 (只讀)
+      - ./scripts:/scripts:ro
+
+      # ⭐ 重要: 掛載 Docker socket 以監控容器
+      # 注意: Windows Docker Desktop 使用 named pipe
+      - //./pipe/docker_engine://./pipe/docker_engine
+
+    # NUC 資源限制 (避免影響其他服務)
+    deploy:
+      resources:
+        limits:
+          cpus: '${N8N_CPU_LIMIT:-2.0}'
+          memory: ${N8N_MEMORY_LIMIT:-2G}
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+    # 健康檢查
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    # 網路設定
+    networks:
+      - mis-network
+
+  # ========================================
+  # cAdvisor - 容器監控 UI (可選)
+  # ========================================
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor-mis
+    restart: unless-stopped
+
+    ports:
+      - "${CADVISOR_PORT:-8090}:8080"
+
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+
+    devices:
+      - /dev/kmsg
+
+    # 資源限制 (輕量級監控工具)
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+    # 健康檢查
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:8080/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+    networks:
+      - mis-network
+
+    # 僅在啟用時運行
+    profiles:
+      - monitoring
+
+# ========================================
+# 資料卷
+# ========================================
+volumes:
+  n8n_data:
+    driver: local
+    name: n8n_mis_data
+
+# ========================================
+# 網路
+# ========================================
+networks:
+  mis-network:
+    name: mis-network
+    driver: bridge

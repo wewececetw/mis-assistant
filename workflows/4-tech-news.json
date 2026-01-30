@@ -1,0 +1,380 @@
+{
+  "name": "4. Daily Tech News Summary",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 7 * * *"
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger-news",
+      "name": "Daily at 7:30 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://techcrunch.com/feed/",
+        "options": {}
+      },
+      "id": "fetch-techcrunch",
+      "name": "Fetch TechCrunch",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [
+        460,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.theverge.com/rss/index.xml",
+        "options": {}
+      },
+      "id": "fetch-theverge",
+      "name": "Fetch The Verge",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [
+        460,
+        350
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://feeds.arstechnica.com/arstechnica/index",
+        "options": {}
+      },
+      "id": "fetch-arstechnica",
+      "name": "Fetch Ars Technica",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [
+        460,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://hnrss.org/frontpage",
+        "options": {}
+      },
+      "id": "fetch-hackernews",
+      "name": "Fetch Hacker News",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [
+        460,
+        650
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge and filter recent articles\nconst allItems = $input.all();\nconst now = new Date();\nconst oneDayAgo = new Date(now - 24 * 60 * 60 * 1000);\n\n// Flatten all articles\nlet articles = [];\nallItems.forEach(item => {\n  if (item.json.title) {\n    const pubDate = item.json.pubDate ? new Date(item.json.pubDate) : now;\n    \n    // Only include articles from last 24 hours\n    if (pubDate >= oneDayAgo) {\n      articles.push({\n        title: item.json.title,\n        link: item.json.link,\n        description: item.json.description || item.json.contentSnippet || '',\n        pubDate: pubDate.toISOString(),\n        source: item.json.creator || item.json['dc:creator'] || 'Unknown'\n      });\n    }\n  }\n});\n\n// Sort by date (newest first)\narticles.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));\n\n// Take top 10\narticles = articles.slice(0, 10);\n\nreturn articles.map(article => ({ json: article }));"
+      },
+      "id": "merge-and-filter",
+      "name": "Merge & Filter (Top 10)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 10,
+        "options": {}
+      },
+      "id": "split-in-batches",
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        900,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GROQ_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "llama-3.3-70b-versatile"
+            },
+            {
+              "name": "messages",
+              "value": "={{ JSON.stringify([{role: 'system', content: '你是科技新聞翻譯和摘要助手。請將以下英文科技新聞翻譯成繁體中文,並摘要成2-3句話。格式:\\n\\n📰 [標題]\\n📝 [2-3句摘要]\\n🏷️ [類別: AI/硬體/軟體/其他]\\n\\n只回傳這個格式,不要其他內容。'}, {role: 'user', content: 'Title: ' + $json.title + '\\nDescription: ' + $json.description}]) }}"
+            },
+            {
+              "name": "temperature",
+              "value": "0.5"
+            },
+            {
+              "name": "max_tokens",
+              "value": "300"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "translate-with-groq",
+      "name": "Translate with Groq",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1120,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Groq response and combine with original\nconst response = $input.first().json;\nconst original = $('Split In Batches').first().json;\n\nlet summary = '';\nlet category = 'Other';\n\nif (response.choices && response.choices.length > 0) {\n  const content = response.choices[0].message.content;\n  summary = content;\n  \n  // Extract category\n  const categoryMatch = content.match(/🏷️\\s*\\[?類別[:：]?\\s*([^\\]\\n]+)/i);\n  if (categoryMatch) {\n    category = categoryMatch[1].trim();\n  }\n}\n\nreturn [{\n  json: {\n    title: original.title,\n    link: original.link,\n    summary: summary,\n    category: category,\n    pubDate: original.pubDate,\n    source: original.source\n  }\n}];"
+      },
+      "id": "parse-translation",
+      "name": "Parse Translation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "aggregate-results",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1560,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format final message\nconst items = $input.all();\nconst today = new Date().toISOString().split('T')[0];\n\n// Group by category\nconst byCategory = {\n  'AI': [],\n  '硬體': [],\n  '軟體': [],\n  '其他': []\n};\n\nitems.forEach(item => {\n  const cat = item.json.category || '其他';\n  const categoryKey = Object.keys(byCategory).find(k => cat.includes(k)) || '其他';\n  byCategory[categoryKey].push(item.json);\n});\n\nlet message = `🗓️ ${today} 科技新聞摘要\\n`;\nmessage += `━━━━━━━━━━━━━━━━━━━\\n\\n`;\n\nlet newsCount = 0;\nfor (const [category, articles] of Object.entries(byCategory)) {\n  if (articles.length === 0) continue;\n  \n  const icon = category === 'AI' ? '🤖' : \n               category === '硬體' ? '💻' : \n               category === '軟體' ? '📱' : '📰';\n  \n  message += `${icon} ${category} 類\\n`;\n  message += `━━━━━━━━━━━━━━━━━━━\\n\\n`;\n  \n  articles.forEach(article => {\n    message += article.summary + '\\n';\n    message += `🔗 [閱讀全文](${article.link})\\n\\n`;\n    newsCount++;\n  });\n}\n\nmessage += `━━━━━━━━━━━━━━━━━━━\\n`;\nmessage += `📊 今日共 ${newsCount} 則新聞\\n`;\nmessage += `⏰ 更新時間: ${new Date().toLocaleString('zh-TW', {timeZone: 'Asia/Taipei'})}`;\n\nreturn [{\n  json: {\n    message: message,\n    newsCount: newsCount,\n    date: today\n  }\n}];"
+      },
+      "id": "format-final-message",
+      "name": "Format Final Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "parse_mode": "Markdown",
+          "disable_web_page_preview": true
+        }
+      },
+      "id": "send-news-telegram",
+      "name": "Send News to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [
+        2000,
+        400
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-api-cred",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily at 7:30 AM": {
+      "main": [
+        [
+          {
+            "node": "Fetch TechCrunch",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch The Verge",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Ars Technica",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Hacker News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch TechCrunch": {
+      "main": [
+        [
+          {
+            "node": "Merge & Filter (Top 10)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch The Verge": {
+      "main": [
+        [
+          {
+            "node": "Merge & Filter (Top 10)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Ars Technica": {
+      "main": [
+        [
+          {
+            "node": "Merge & Filter (Top 10)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Hacker News": {
+      "main": [
+        [
+          {
+            "node": "Merge & Filter (Top 10)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge & Filter (Top 10)": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        [
+          {
+            "node": "Translate with Groq",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Translate with Groq": {
+      "main": [
+        [
+          {
+            "node": "Parse Translation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Translation": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        null,
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Results": {
+      "main": [
+        [
+          {
+            "node": "Format Final Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Final Message": {
+      "main": [
+        [
+          {
+            "node": "Send News to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "id": "tech-news-workflow",
+  "meta": {
+    "instanceId": "mis-assistant"
+  },
+  "tags": []
+}

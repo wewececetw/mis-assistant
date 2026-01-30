@@ -1,0 +1,229 @@
+{
+  "name": "1. Docker Container Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 3
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 3 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "powershell.exe -ExecutionPolicy Bypass -File C:\\mis-assistant\\scripts\\docker-monitor.ps1",
+        "options": {}
+      },
+      "id": "execute-monitor-script",
+      "name": "Run Monitor Script",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse the PowerShell script JSON output\nconst output = $input.first().json.stdout;\n\n// Find JSON in output (it's after all the verbose text)\nconst jsonMatch = output.match(/\\{[\\s\\S]*\"Timestamp\"[\\s\\S]*\\}/m);\n\nif (!jsonMatch) {\n  return [{\n    json: {\n      error: true,\n      message: \"Cannot parse monitor output\",\n      rawOutput: output\n    }\n  }];\n}\n\nconst report = JSON.parse(jsonMatch[0]);\n\n// Check if there are any alerts or warnings\nconst hasAlerts = report.Alerts && report.Alerts.length > 0;\nconst hasWarnings = report.Warnings && report.Warnings.length > 0;\nconst hasIssues = hasAlerts || hasWarnings;\n\nreturn [{\n  json: {\n    ...report,\n    hasIssues,\n    hasAlerts,\n    hasWarnings,\n    issueCount: (report.Alerts?.length || 0) + (report.Warnings?.length || 0)\n  }\n}];"
+      },
+      "id": "parse-json",
+      "name": "Parse JSON Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.hasIssues }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-issues",
+      "name": "Has Issues?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format alert message for Telegram\nconst data = $input.first().json;\n\nlet message = `🚨 Docker Container Alert!\\n`;\nmessage += `━━━━━━━━━━━━━━━━━━━\\n\\n`;\nmessage += `⏰ Time: ${data.Timestamp}\\n\\n`;\nmessage += `📦 Containers: ${data.RunningContainers}/${data.TotalContainers} running\\n`;\nmessage += `❌ Errors: ${data.Alerts?.length || 0}\\n`;\nmessage += `⚠️ Warnings: ${data.Warnings?.length || 0}\\n\\n`;\n\nif (data.Alerts && data.Alerts.length > 0) {\n  message += `🚨 ERRORS:\\n`;\n  data.Alerts.forEach(alert => {\n    message += `• ${alert.Container}\\n`;\n    message += `  ${alert.Message}\\n`;\n    if (alert.Status) {\n      message += `  Status: ${alert.Status}\\n`;\n    }\n  });\n  message += `\\n`;\n}\n\nif (data.Warnings && data.Warnings.length > 0) {\n  message += `⚠️ WARNINGS:\\n`;\n  data.Warnings.forEach(warn => {\n    message += `• ${warn.Container}\\n`;\n    message += `  ${warn.Message}\\n`;\n  });\n  message += `\\n`;\n}\n\nmessage += `💽 Disk Free: ${data.DiskFreePercent}%\\n`;\nmessage += `\\n━━━━━━━━━━━━━━━━━━━\\n`;\nmessage += `Check: http://localhost:8080 (cAdvisor)`;\n\nreturn [{\n  json: {\n    message: message\n  }\n}];"
+      },
+      "id": "format-alert-message",
+      "name": "Format Alert Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format normal status message for Telegram\nconst data = $input.first().json;\n\nlet message = `✅ Docker Status - All OK\\n`;\nmessage += `━━━━━━━━━━━━━━━━━━━\\n\\n`;\nmessage += `⏰ ${data.Timestamp}\\n\\n`;\nmessage += `📦 Containers: ${data.RunningContainers}/${data.TotalContainers} running\\n`;\nmessage += `💽 Disk: ${data.DiskFreePercent}% free\\n\\n`;\n\n// Show top 3 containers by resource usage\nif (data.Info && data.Info.length > 0) {\n  message += `🔝 Top Containers:\\n`;\n  const top3 = data.Info.slice(0, 3);\n  top3.forEach(container => {\n    message += `• ${container.Container}\\n`;\n    message += `  CPU: ${container.CPU} | RAM: ${container.MemoryPercent}\\n`;\n  });\n  \n  if (data.Info.length > 3) {\n    message += `\\n... and ${data.Info.length - 3} more containers\\n`;\n  }\n}\n\nreturn [{\n  json: {\n    message: message\n  }\n}];"
+      },
+      "id": "format-normal-message",
+      "name": "Format Normal Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "disable_notification": false
+        }
+      },
+      "id": "send-alert-telegram",
+      "name": "Send Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [
+        1340,
+        200
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-api-cred",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "disable_notification": true
+        }
+      },
+      "id": "send-normal-telegram",
+      "name": "Send Status (Silent)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [
+        1340,
+        400
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-api-cred",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 3 minutes": {
+      "main": [
+        [
+          {
+            "node": "Run Monitor Script",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Monitor Script": {
+      "main": [
+        [
+          {
+            "node": "Parse JSON Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse JSON Output": {
+      "main": [
+        [
+          {
+            "node": "Has Issues?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Issues?": {
+      "main": [
+        [
+          {
+            "node": "Format Alert Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Normal Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Alert Message": {
+      "main": [
+        [
+          {
+            "node": "Send Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Normal Message": {
+      "main": [
+        [
+          {
+            "node": "Send Status (Silent)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "id": "docker-monitor-workflow",
+  "meta": {
+    "instanceId": "mis-assistant"
+  },
+  "tags": []
+}
