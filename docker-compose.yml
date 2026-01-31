@@ -12,6 +12,7 @@ services:
     image: n8nio/n8n:latest
     container_name: n8n-mis
     restart: unless-stopped
+    user: root
 
     ports:
       - "5678:5678"  # n8n Web UI
@@ -34,6 +35,13 @@ services:
 
       # 資料持久化路徑
       - N8N_USER_FOLDER=/home/node/.n8n
+
+      # 允許 Code 節點使用 Node.js 內建模組
+      - NODE_FUNCTION_ALLOW_BUILTIN=http,https,net,url,querystring
+      - N8N_RUNNERS_DISABLED=true
+
+      # 允許工作流程節點存取環境變數
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
 
       # 執行環境變數 (供工作流程使用)
       - GROQ_API_KEY=${GROQ_API_KEY}
@@ -62,9 +70,8 @@ services:
       # PowerShell 腳本 (只讀)
       - ./scripts:/scripts:ro
 
-      # ⭐ 重要: 掛載 Docker socket 以監控容器
-      # 注意: Windows Docker Desktop 使用 named pipe
-      - //./pipe/docker_engine://./pipe/docker_engine
+      # ⭐ 重要: 掛載 Podman socket 以監控容器
+      - /run/podman/podman.sock:/var/run/docker.sock
 
     # NUC 資源限制 (避免影響其他服務)
     deploy:
@@ -85,6 +92,19 @@ services:
       start_period: 40s
 
     # 網路設定
+    networks:
+      - mis-network
+
+  # ========================================
+  # Docker API Proxy - 讓 n8n 透過 HTTP 呼叫 Podman API
+  # ========================================
+  docker-api:
+    image: alpine/socat
+    container_name: docker-api-proxy
+    restart: unless-stopped
+    command: tcp-listen:2375,reuseaddr,fork unix-connect:/var/run/docker.sock
+    volumes:
+      - /run/podman/podman.sock:/var/run/docker.sock
     networks:
       - mis-network
 

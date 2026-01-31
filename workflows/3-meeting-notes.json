@@ -9,155 +9,69 @@
         "options": {}
       },
       "id": "webhook-trigger",
-      "name": "Webhook",
+      "name": "Receive Meeting Notes",
       "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1,
-      "position": [
-        240,
-        300
-      ],
-      "webhookId": "meeting-notes-webhook"
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "meeting-notes"
     },
     {
       "parameters": {
-        "updates": [
-          "message"
-        ],
-        "additionalFields": {}
+        "jsCode": "const input = $input.first().json;\nconst text = input.body?.text || input.body?.notes || JSON.stringify(input.body);\n\nconst prompt = `You are a professional meeting notes assistant. Please analyze the following meeting notes and provide a structured summary in Traditional Chinese.\n\nPlease include:\n1. Meeting Summary (2-3 sentences)\n2. Key Decisions (bullet points)\n3. Action Items (with responsible persons if mentioned)\n4. Next Steps (if mentioned)\n\nMeeting Notes:\n${text}`;\n\nreturn [{ json: { prompt: prompt, originalText: text } }];"
       },
-      "id": "telegram-trigger",
-      "name": "Telegram Message",
-      "type": "n8n-nodes-base.telegramTrigger",
-      "typeVersion": 1,
-      "position": [
-        240,
-        500
-      ],
-      "webhookId": "telegram-meeting-notes",
-      "credentials": {
-        "telegramApi": {
-          "id": "telegram-api-cred",
-          "name": "Telegram Bot"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "// Extract meeting notes text from webhook or Telegram\nconst items = $input.all();\n\nlet meetingText = '';\nlet source = 'unknown';\nlet chatId = null;\n\n// Check if from webhook\nif (items[0].json.body) {\n  meetingText = items[0].json.body.text || items[0].json.body.content || '';\n  source = 'webhook';\n}\n// Check if from Telegram\nelse if (items[0].json.message) {\n  meetingText = items[0].json.message.text || '';\n  chatId = items[0].json.message.chat.id;\n  source = 'telegram';\n}\n\nif (!meetingText) {\n  return [{\n    json: {\n      error: true,\n      message: 'No meeting text provided'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    meetingText,\n    source,\n    chatId,\n    receivedAt: new Date().toISOString()\n  }\n}];"
-      },
-      "id": "extract-text",
-      "name": "Extract Meeting Text",
+      "id": "prepare-prompt",
+      "name": "Prepare AI Prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        460,
-        400
-      ]
+      "position": [460, 300]
     },
     {
       "parameters": {
         "method": "POST",
         "url": "https://api.groq.com/openai/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "groqApi",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $env.GROQ_API_KEY }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "model",
-              "value": "llama-3.3-70b-versatile"
-            },
-            {
-              "name": "messages",
-              "value": "={{ JSON.stringify([{role: 'system', content: '你是專業的會議記錄整理助手。請將會議記錄整理成以下格式:\\n\\n📋 會議記錄摘要\\n━━━━━━━━━━━━━━━━━━━\\n\\n🎯 會議主題\\n[主題]\\n\\n⏰ 會議時間\\n[時間]\\n\\n✅ 重要決議\\n1. [決議內容]\\n2. ...\\n\\n📝 待辦事項\\n- [負責人] [任務描述] - [期限]\\n- ...\\n\\n💡 討論重點\\n- [重點1]\\n- ...\\n\\n📅 下次會議\\n[時間和議題]\\n\\n請用繁體中文,內容要簡潔清晰。'}, {role: 'user', content: $json.meetingText}]) }}"
-            },
-            {
-              "name": "temperature",
-              "value": "0.7"
-            },
-            {
-              "name": "max_tokens",
-              "value": "2000"
-            }
-          ]
-        },
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: $json.prompt }], temperature: 0.3, max_tokens: 2000 }) }}",
         "options": {}
       },
-      "id": "call-groq-api",
-      "name": "Call Groq API",
+      "id": "call-groq",
+      "name": "Call Groq AI",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [
-        680,
-        400
-      ]
+      "typeVersion": 4.2,
+      "position": [680, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "06uVsarrbPv5XTZf",
+          "name": "Groq API"
+        }
+      }
     },
     {
       "parameters": {
-        "jsCode": "// Extract AI response\nconst response = $input.first().json;\n\nif (!response.choices || response.choices.length === 0) {\n  return [{\n    json: {\n      error: true,\n      message: 'No response from Groq API',\n      rawResponse: response\n    }\n  }];\n}\n\nconst summary = response.choices[0].message.content;\nconst inputData = $('Extract Meeting Text').first().json;\n\nreturn [{\n  json: {\n    summary,\n    originalText: inputData.meetingText,\n    source: inputData.source,\n    chatId: inputData.chatId,\n    tokensUsed: response.usage?.total_tokens || 0,\n    processedAt: new Date().toISOString()\n  }\n}];"
+        "jsCode": "const input = $input.first().json;\nlet summary = input.choices?.[0]?.message?.content || 'AI processing failed';\n\n// Remove markdown characters that break Telegram\nsummary = summary.replace(/\\*/g, '').replace(/_/g, ' ').replace(/`/g, '').replace(/\\[/g, '(').replace(/\\]/g, ')');\n\nlet msg = '[AI] Meeting Notes Summary\\n';\nmsg += '---\\n';\nmsg += 'Time: ' + new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }) + '\\n\\n';\nmsg += summary;\n\nreturn [{ json: { message: msg, summary: summary } }];"
       },
-      "id": "parse-ai-response",
-      "name": "Parse AI Response",
+      "id": "format-summary",
+      "name": "Format Summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        900,
-        400
-      ]
+      "position": [900, 300]
     },
     {
       "parameters": {
-        "conditions": {
-          "string": [
-            {
-              "value1": "={{ $json.source }}",
-              "operation": "equals",
-              "value2": "telegram"
-            }
-          ]
-        }
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": { "parse_mode": "none" }
       },
-      "id": "check-source",
-      "name": "From Telegram?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [
-        1120,
-        400
-      ]
-    },
-    {
-      "parameters": {
-        "chatId": "={{ $json.chatId }}",
-        "text": "={{ $json.summary }}",
-        "additionalFields": {
-          "parse_mode": "Markdown"
-        }
-      },
-      "id": "reply-telegram",
-      "name": "Reply to Telegram",
+      "id": "send-telegram",
+      "name": "Send to Telegram",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.1,
-      "position": [
-        1340,
-        300
-      ],
+      "position": [1120, 300],
       "credentials": {
         "telegramApi": {
-          "id": "telegram-api-cred",
+          "id": "XfuqkzOYYEa0ar0n",
           "name": "Telegram Bot"
         }
       }
@@ -165,134 +79,37 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ success: true, summary: $json.summary, tokensUsed: $json.tokensUsed }) }}",
-        "options": {}
+        "responseBody": "={{ JSON.stringify({ success: true, summary: $json.summary }) }}"
       },
-      "id": "webhook-response",
-      "name": "Webhook Response",
+      "id": "respond-webhook",
+      "name": "Respond",
       "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [
-        1340,
-        500
-      ]
-    },
-    {
-      "parameters": {
-        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=📝 Meeting Notes Processed\\n\\nTokens used: {{ $json.tokensUsed }}\\nProcessed at: {{ $json.processedAt }}",
-        "additionalFields": {}
-      },
-      "id": "notify-admin",
-      "name": "Notify Admin",
-      "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.1,
-      "position": [
-        1560,
-        500
-      ],
-      "credentials": {
-        "telegramApi": {
-          "id": "telegram-api-cred",
-          "name": "Telegram Bot"
-        }
-      }
+      "position": [1340, 300]
     }
   ],
   "connections": {
-    "Webhook": {
-      "main": [
-        [
-          {
-            "node": "Extract Meeting Text",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Receive Meeting Notes": {
+      "main": [[{ "node": "Prepare AI Prompt", "type": "main", "index": 0 }]]
     },
-    "Telegram Message": {
-      "main": [
-        [
-          {
-            "node": "Extract Meeting Text",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Prepare AI Prompt": {
+      "main": [[{ "node": "Call Groq AI", "type": "main", "index": 0 }]]
     },
-    "Extract Meeting Text": {
-      "main": [
-        [
-          {
-            "node": "Call Groq API",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Call Groq AI": {
+      "main": [[{ "node": "Format Summary", "type": "main", "index": 0 }]]
     },
-    "Call Groq API": {
+    "Format Summary": {
       "main": [
         [
-          {
-            "node": "Parse AI Response",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Parse AI Response": {
-      "main": [
-        [
-          {
-            "node": "From Telegram?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "From Telegram?": {
-      "main": [
-        [
-          {
-            "node": "Reply to Telegram",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Webhook Response",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Webhook Response": {
-      "main": [
-        [
-          {
-            "node": "Notify Admin",
-            "type": "main",
-            "index": 0
-          }
+          { "node": "Send to Telegram", "type": "main", "index": 0 },
+          { "node": "Respond", "type": "main", "index": 0 }
         ]
       ]
     }
   },
   "active": false,
-  "settings": {
-    "executionOrder": "v1"
-  },
-  "versionId": "1",
+  "settings": { "executionOrder": "v1" },
   "id": "meeting-notes-workflow",
-  "meta": {
-    "instanceId": "mis-assistant"
-  },
+  "meta": { "instanceId": "mis-assistant" },
   "tags": []
 }
