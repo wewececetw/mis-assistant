@@ -15,38 +15,48 @@
     },
     {
       "parameters": {
+        "jsCode": "const fs = require('fs');\nconst offsetFile = '/home/node/.n8n/telegram-offset.txt';\nlet offset = 0;\n\ntry {\n  if (fs.existsSync(offsetFile)) {\n    offset = parseInt(fs.readFileSync(offsetFile, 'utf8').trim()) || 0;\n  }\n} catch (e) {\n  console.log('No offset file, starting from 0');\n}\n\nreturn [{ json: { offset } }];"
+      },
+      "id": "read-offset",
+      "name": "Read Offset",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
         "method": "POST",
         "url": "={{ 'https://api.telegram.org/bot' + $env.TELEGRAM_BOT_TOKEN + '/getUpdates' }}",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ offset: $env.TG_OFFSET ? parseInt($env.TG_OFFSET) : 0, timeout: 5 }) }}",
+        "jsonBody": "={{ JSON.stringify({ offset: $json.offset, timeout: 5 }) }}",
         "options": {}
       },
       "id": "get-updates",
       "name": "Get Updates",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [460, 400]
+      "position": [680, 400]
     },
     {
       "parameters": {
-        "jsCode": "const updates = $input.first().json.result || [];\nif (updates.length === 0) return [];\n\nconst results = [];\nfor (const update of updates) {\n  if (update.message) {\n    results.push({ json: { message: update.message, update_id: update.update_id } });\n  }\n}\nreturn results;"
+        "jsCode": "const updates = $input.first().json.result || [];\nif (updates.length === 0) return [];\n\n// Only process the LATEST update to avoid duplicates\nconst latest = updates[updates.length - 1];\nif (latest.message) {\n  return [{ json: { message: latest.message, update_id: latest.update_id } }];\n}\nreturn [];"
       },
       "id": "extract-messages",
       "name": "Extract Messages",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [680, 400]
+      "position": [900, 400]
     },
     {
       "parameters": {
-        "jsCode": "const msg = $input.first().json.message;\nconst chatId = msg.chat.id;\nconst from = msg.from.username || msg.from.first_name;\n\n// Check if voice message\nif (msg.voice) {\n  return [{ json: { type: 'voice', chatId, fileId: msg.voice.file_id, from } }];\n}\n\n// Check if text command\nconst text = (msg.text || '').trim();\nif (!text.startsWith('/')) {\n  return [{ json: { type: 'unknown', chatId, text, from } }];\n}\n\nconst parts = text.split(' ');\nconst cmd = parts[0].toLowerCase().replace('/', '');\nconst args = parts.slice(1).join(' ');\n\nreturn [{ json: { type: 'command', command: cmd, args, chatId, from } }];"
+        "jsCode": "const msg = $input.first().json.message;\nconst updateId = $input.first().json.update_id;\nconst chatId = msg.chat.id;\nconst from = msg.from.username || msg.from.first_name;\n\n// Check if voice message\nif (msg.voice) {\n  return [{ json: { type: 'voice', chatId, fileId: msg.voice.file_id, from, update_id: updateId } }];\n}\n\n// Check if text command\nconst text = (msg.text || '').trim();\nif (!text.startsWith('/')) {\n  return [{ json: { type: 'unknown', chatId, text, from, update_id: updateId } }];\n}\n\nconst parts = text.split(' ');\nconst cmd = parts[0].toLowerCase().replace('/', '');\nconst args = parts.slice(1).join(' ');\n\nreturn [{ json: { type: 'command', command: cmd, args, chatId, from, update_id: updateId } }];"
       },
       "id": "parse-message",
       "name": "Parse Message",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [460, 400]
+      "position": [1120, 400]
     },
     {
       "parameters": {
@@ -66,17 +76,18 @@
     },
     {
       "parameters": {
-        "conditions": {
-          "options": { "caseSensitive": false, "leftValue": "" },
-          "conditions": [
-            { "id": "1", "leftValue": "={{ $json.command }}", "rightValue": "status", "operator": { "type": "string", "operation": "equals" } },
-            { "id": "2", "leftValue": "={{ $json.command }}", "rightValue": "backup", "operator": { "type": "string", "operation": "equals" } },
-            { "id": "3", "leftValue": "={{ $json.command }}", "rightValue": "news", "operator": { "type": "string", "operation": "equals" } },
-            { "id": "4", "leftValue": "={{ $json.command }}", "rightValue": "meeting", "operator": { "type": "string", "operation": "equals" } },
-            { "id": "5", "leftValue": "={{ $json.command }}", "rightValue": "help", "operator": { "type": "string", "operation": "equals" } }
-          ],
-          "combinator": "or"
-        }
+        "mode": "rules",
+        "rules": {
+          "rules": [
+            { "outputKey": "0", "conditions": { "conditions": [{ "leftValue": "={{ $json.command }}", "rightValue": "start", "operator": { "type": "string", "operation": "equals" } }] } },
+            { "outputKey": "1", "conditions": { "conditions": [{ "leftValue": "={{ $json.command }}", "rightValue": "status", "operator": { "type": "string", "operation": "equals" } }] } },
+            { "outputKey": "2", "conditions": { "conditions": [{ "leftValue": "={{ $json.command }}", "rightValue": "backup", "operator": { "type": "string", "operation": "equals" } }] } },
+            { "outputKey": "3", "conditions": { "conditions": [{ "leftValue": "={{ $json.command }}", "rightValue": "news", "operator": { "type": "string", "operation": "equals" } }] } },
+            { "outputKey": "4", "conditions": { "conditions": [{ "leftValue": "={{ $json.command }}", "rightValue": "meeting", "operator": { "type": "string", "operation": "equals" } }] } },
+            { "outputKey": "5", "conditions": { "conditions": [{ "leftValue": "={{ $json.command }}", "rightValue": "help", "operator": { "type": "string", "operation": "equals" } }] } }
+          ]
+        },
+        "options": { "fallbackOutput": "extra" }
       },
       "id": "route-command",
       "name": "Which Command?",
@@ -97,7 +108,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const items = $input.all();\nconst containers = items.map(i => i.json);\nconst running = containers.filter(c => c.State === 'running');\n\nlet msg = '[Status] Container Health Check\\n---\\n';\nmsg += 'Time: ' + new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }) + '\\n';\nmsg += 'Total: ' + containers.length + ' | Running: ' + running.length + '\\n\\n';\n\nfor (const c of containers) {\n  const name = (c.Names && c.Names[0]) ? c.Names[0].replace('/', '') : 'unknown';\n  const icon = c.State === 'running' ? '[OK]' : '[X]';\n  msg += icon + ' ' + name + ' (' + c.State + ')\\n';\n}\n\nreturn [{ json: { message: msg, chatId: $node['Parse Message'].json.chatId } }];"
+        "jsCode": "const items = $input.all();\nconst containers = items.map(i => i.json);\nconst running = containers.filter(c => c.State === 'running');\n\nlet msg = '[Status] Container Health Check\\n---\\n';\nmsg += 'Time: ' + new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }) + '\\n';\nmsg += 'Total: ' + containers.length + ' | Running: ' + running.length + '\\n\\n';\n\nfor (const c of containers) {\n  const name = (c.Names && c.Names[0]) ? c.Names[0].replace('/', '') : 'unknown';\n  const icon = c.State === 'running' ? '[OK]' : '[X]';\n  msg += icon + ' ' + name + ' (' + c.State + ')\\n';\n}\n\nreturn [{ json: { message: msg, chatId: $node['Parse Message'].json.chatId, update_id: $node['Parse Message'].json.update_id } }];"
       },
       "id": "format-status",
       "name": "Format Status",
@@ -118,7 +129,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const items = $input.all();\nconst containers = items.map(i => i.json);\nconst mysql = containers.filter(c => c.Image && (c.Image.includes('mysql') || c.Image.includes('mariadb')));\n\nlet msg = '[Backup] Database Backup\\n---\\n';\nmsg += 'Time: ' + new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }) + '\\n\\n';\n\nif (mysql.length === 0) {\n  msg += 'No MySQL/MariaDB containers found.\\n';\n} else {\n  msg += 'Found ' + mysql.length + ' database container(s):\\n';\n  for (const c of mysql) {\n    const name = c.Names[0].replace('/', '');\n    msg += '- ' + name + ' (backup triggered)\\n';\n  }\n}\n\nreturn [{ json: { message: msg, chatId: $node['Parse Message'].json.chatId } }];"
+        "jsCode": "const items = $input.all();\nconst containers = items.map(i => i.json);\nconst mysql = containers.filter(c => c.Image && (c.Image.includes('mysql') || c.Image.includes('mariadb')));\n\nlet msg = '[Backup] Database Backup\\n---\\n';\nmsg += 'Time: ' + new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }) + '\\n\\n';\n\nif (mysql.length === 0) {\n  msg += 'No MySQL/MariaDB containers found.\\n';\n} else {\n  msg += 'Found ' + mysql.length + ' database container(s):\\n';\n  for (const c of mysql) {\n    const name = c.Names[0].replace('/', '');\n    msg += '- ' + name + ' (backup triggered)\\n';\n  }\n}\n\nreturn [{ json: { message: msg, chatId: $node['Parse Message'].json.chatId, update_id: $node['Parse Message'].json.update_id } }];"
       },
       "id": "format-backup",
       "name": "Format Backup",
@@ -128,7 +139,7 @@
     },
     {
       "parameters": {
-        "jsCode": "let msg = '[News] Generating tech news summary...\\n---\\n';\nmsg += 'This will take 10-20 seconds. Please wait.\\n';\nreturn [{ json: { message: msg, chatId: $node['Parse Message'].json.chatId } }];"
+        "jsCode": "let msg = '[News] Generating tech news summary...\\n---\\n';\nmsg += 'This will take 10-20 seconds. Please wait.\\n';\nreturn [{ json: { message: msg, chatId: $node['Parse Message'].json.chatId, update_id: $node['Parse Message'].json.update_id } }];"
       },
       "id": "exec-news",
       "name": "Execute: News",
@@ -138,13 +149,29 @@
     },
     {
       "parameters": {
-        "jsCode": "const args = $node['Parse Message'].json.args;\nlet msg = '';\n\nif (!args || args.trim() === '') {\n  msg = '[Meeting] Please provide meeting notes\\n---\\n';\n  msg += 'Usage: /meeting <your meeting notes>\\n\\n';\n  msg += 'Or send a voice message after typing /meeting';\n  return [{ json: { message: msg, chatId: $node['Parse Message'].json.chatId, error: true } }];\n}\n\nconst prompt = 'You are a professional meeting notes assistant. Please analyze the following meeting notes and provide a structured summary in Traditional Chinese.\\n\\nPlease include:\\n1. Meeting Summary (2-3 sentences)\\n2. Key Decisions (bullet points)\\n3. Action Items (with responsible persons if mentioned)\\n4. Next Steps (if mentioned)\\n\\nMeeting Notes:\\n' + args;\n\nreturn [{ json: { prompt, originalText: args, chatId: $node['Parse Message'].json.chatId } }];"
+        "jsCode": "const args = $node['Parse Message'].json.args;\nconst updateId = $node['Parse Message'].json.update_id;\nconst chatId = $node['Parse Message'].json.chatId;\nlet msg = '';\n\nif (!args || args.trim() === '') {\n  msg = '[Meeting] Please provide meeting notes\\n---\\n';\n  msg += 'Usage: /meeting <your meeting notes>\\n\\n';\n  msg += 'Or send a voice message for automatic transcription';\n  return [{ json: { message: msg, chatId, update_id: updateId, error: true } }];\n}\n\nconst prompt = 'You are a professional meeting notes assistant. Please analyze the following meeting notes and provide a structured summary in Traditional Chinese.\\n\\nPlease include:\\n1. Meeting Summary (2-3 sentences)\\n2. Key Decisions (bullet points)\\n3. Action Items (with responsible persons if mentioned)\\n4. Next Steps (if mentioned)\\n\\nMeeting Notes:\\n' + args;\n\nreturn [{ json: { prompt, originalText: args, chatId, update_id: updateId } }];"
       },
       "id": "exec-meeting",
       "name": "Execute: Meeting",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [1120, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "" },
+          "conditions": [
+            { "id": "1", "leftValue": "={{ $json.error }}", "rightValue": true, "operator": { "type": "boolean", "operation": "notEquals" } }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-meeting-error",
+      "name": "Has Meeting Text?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 400]
     },
     {
       "parameters": {
@@ -161,7 +188,7 @@
       "name": "Call Groq AI (Meeting)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1340, 400],
+      "position": [1560, 400],
       "credentials": {
         "httpHeaderAuth": {
           "id": "06uVsarrbPv5XTZf",
@@ -171,23 +198,43 @@
     },
     {
       "parameters": {
-        "jsCode": "const input = $input.first().json;\nlet summary = input.choices?.[0]?.message?.content || 'AI processing failed';\nsummary = summary.replace(/\\*/g, '').replace(/_/g, ' ').replace(/`/g, '').replace(/\\[/g, '(').replace(/\\]/g, ')');\n\nlet msg = '[AI] Meeting Notes Summary\\n---\\nTime: ' + new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }) + '\\n\\n' + summary;\n\nreturn [{ json: { message: msg, chatId: $node['Parse Message'].json.chatId } }];"
+        "jsCode": "const input = $input.first().json;\nlet summary = input.choices?.[0]?.message?.content || 'AI processing failed';\nsummary = summary.replace(/\\*/g, '').replace(/_/g, ' ').replace(/`/g, '').replace(/\\[/g, '(').replace(/\\]/g, ')');\n\nlet msg = '[AI] Meeting Notes Summary\\n---\\nTime: ' + new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }) + '\\n\\n' + summary;\n\nreturn [{ json: { message: msg, chatId: $node['Parse Message'].json.chatId, update_id: $node['Parse Message'].json.update_id } }];"
       },
       "id": "format-meeting",
       "name": "Format Meeting",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1560, 400]
+      "position": [1780, 400]
     },
     {
       "parameters": {
-        "jsCode": "let msg = '[MIS Assistant] Available Commands\\n---\\n';\nmsg += '/status - Check container status\\n';\nmsg += '/backup - Run database backup now\\n';\nmsg += '/news - Generate tech news summary\\n';\nmsg += '/meeting <text> - AI meeting notes\\n';\nmsg += '/help - Show this help\\n\\n';\nmsg += 'You can also send voice messages for meeting notes!';\n\nreturn [{ json: { message: msg, chatId: $node['Parse Message'].json.chatId } }];"
+        "jsCode": "let msg = 'Welcome to MIS Assistant Bot!\\n---\\n';\nmsg += 'I can help you manage your containers and automate tasks.\\n\\n';\nmsg += 'Available commands:\\n';\nmsg += '/status - Check container status\\n';\nmsg += '/backup - Run database backup\\n';\nmsg += '/news - Tech news summary\\n';\nmsg += '/meeting <text> - AI meeting notes\\n';\nmsg += '/help - Show commands\\n\\n';\nmsg += 'Send voice messages for meeting notes!';\n\nreturn [{ json: { message: msg, chatId: $node['Parse Message'].json.chatId, update_id: $node['Parse Message'].json.update_id } }];"
+      },
+      "id": "exec-start",
+      "name": "Execute: Start",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 50]
+    },
+    {
+      "parameters": {
+        "jsCode": "let msg = '[MIS Assistant] Available Commands\\n---\\n';\nmsg += '/status - Check container status\\n';\nmsg += '/backup - Run database backup now\\n';\nmsg += '/news - Generate tech news summary\\n';\nmsg += '/meeting <text> - AI meeting notes\\n';\nmsg += '/help - Show this help\\n\\n';\nmsg += 'You can also send voice messages for meeting notes!';\n\nreturn [{ json: { message: msg, chatId: $node['Parse Message'].json.chatId, update_id: $node['Parse Message'].json.update_id } }];"
       },
       "id": "exec-help",
       "name": "Execute: Help",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [1120, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cmd = $node['Parse Message'].json.command;\nlet msg = 'Unknown command: /' + cmd + '\\n---\\n';\nmsg += 'Type /help to see available commands.';\n\nreturn [{ json: { message: msg, chatId: $node['Parse Message'].json.chatId, update_id: $node['Parse Message'].json.update_id } }];"
+      },
+      "id": "exec-unknown",
+      "name": "Execute: Unknown",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 600]
     },
     {
       "parameters": {
@@ -206,6 +253,16 @@
           "name": "Telegram Bot"
         }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst offsetFile = '/home/node/.n8n/telegram-offset.txt';\nconst newOffset = $input.first().json.update_id + 1;\n\nfs.writeFileSync(offsetFile, newOffset.toString(), 'utf8');\n\nreturn [{ json: { offset_saved: newOffset } }];"
+      },
+      "id": "save-offset",
+      "name": "Save Offset",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 300]
     },
     {
       "parameters": {
@@ -295,6 +352,9 @@
   ],
   "connections": {
     "Poll Every 10s": {
+      "main": [[{ "node": "Read Offset", "type": "main", "index": 0 }]]
+    },
+    "Read Offset": {
       "main": [[{ "node": "Get Updates", "type": "main", "index": 0 }]]
     },
     "Get Updates": {
@@ -318,11 +378,14 @@
     },
     "Which Command?": {
       "main": [
+        [{ "node": "Execute: Start", "type": "main", "index": 0 }],
         [{ "node": "Execute: Status", "type": "main", "index": 0 }],
         [{ "node": "Execute: Backup", "type": "main", "index": 0 }],
         [{ "node": "Execute: News", "type": "main", "index": 0 }],
         [{ "node": "Execute: Meeting", "type": "main", "index": 0 }],
-        [{ "node": "Execute: Help", "type": "main", "index": 0 }]
+        [{ "node": "Execute: Help", "type": "main", "index": 0 }],
+        [],
+        [{ "node": "Execute: Unknown", "type": "main", "index": 0 }]
       ]
     },
     "Execute: Status": {
@@ -341,7 +404,13 @@
       "main": [[{ "node": "Send Reply", "type": "main", "index": 0 }]]
     },
     "Execute: Meeting": {
-      "main": [[{ "node": "Call Groq AI (Meeting)", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Has Meeting Text?", "type": "main", "index": 0 }]]
+    },
+    "Has Meeting Text?": {
+      "main": [
+        [{ "node": "Call Groq AI (Meeting)", "type": "main", "index": 0 }],
+        [{ "node": "Send Reply", "type": "main", "index": 0 }]
+      ]
     },
     "Call Groq AI (Meeting)": {
       "main": [[{ "node": "Format Meeting", "type": "main", "index": 0 }]]
@@ -351,6 +420,15 @@
     },
     "Execute: Help": {
       "main": [[{ "node": "Send Reply", "type": "main", "index": 0 }]]
+    },
+    "Execute: Start": {
+      "main": [[{ "node": "Send Reply", "type": "main", "index": 0 }]]
+    },
+    "Execute: Unknown": {
+      "main": [[{ "node": "Send Reply", "type": "main", "index": 0 }]]
+    },
+    "Send Reply": {
+      "main": [[{ "node": "Save Offset", "type": "main", "index": 0 }]]
     },
     "Is Voice?": {
       "main": [

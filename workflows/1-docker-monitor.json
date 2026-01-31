@@ -4,11 +4,11 @@
     {
       "parameters": {
         "rule": {
-          "interval": [{ "field": "minutes", "minutesInterval": 3 }]
+          "interval": [{ "field": "cronExpression", "cronExpression": "30 7 * * *" }]
         }
       },
       "id": "schedule-trigger",
-      "name": "Every 3 minutes",
+      "name": "Daily 7:30 AM",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.1,
       "position": [240, 300]
