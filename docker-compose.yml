@@ -41,7 +41,7 @@ services:
       - N8N_USER_FOLDER=/home/node/.n8n
 
       # 允許 Code 節點使用 Node.js 內建模組
-      - NODE_FUNCTION_ALLOW_BUILTIN=http,https,net,url,querystring
+      - NODE_FUNCTION_ALLOW_BUILTIN=http,https,net,url,querystring,child_process,fs,path,crypto
       - N8N_RUNNERS_DISABLED=true
 
       # 允許工作流程節點存取環境變數
