@@ -9,6 +9,7 @@ logs/
 
 # n8n 資料
 n8n_data/
+database.sqlite
 
 # 系統檔案
 .DS_Store

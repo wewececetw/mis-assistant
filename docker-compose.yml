@@ -9,7 +9,10 @@ services:
   # n8n - 工作流程自動化引擎
   # ========================================
   n8n:
-    image: n8nio/n8n:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.n8n
+    image: n8n-mis-ffmpeg:latest
     container_name: n8n-mis
     restart: unless-stopped
     user: root
