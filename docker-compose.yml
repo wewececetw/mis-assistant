@@ -31,7 +31,8 @@ services:
       - N8N_HOST=0.0.0.0
       - N8N_PORT=5678
       - N8N_PROTOCOL=http
-      - WEBHOOK_URL=http://localhost:5678
+      - WEBHOOK_URL=https://nucboxg3-plus.tail2f559.ts.net
+      - N8N_PROXY_HOPS=1
 
       # 資料持久化路徑
       - N8N_USER_FOLDER=/home/node/.n8n
@@ -42,6 +43,10 @@ services:
 
       # 允許工作流程節點存取環境變數
       - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+
+      # 啟用 Community Nodes
+      - N8N_COMMUNITY_PACKAGES_ENABLED=true
+      - N8N_CUSTOM_EXTENSIONS=/home/node/.n8n/custom
 
       # 執行環境變數 (供工作流程使用)
       - GROQ_API_KEY=${GROQ_API_KEY}
@@ -69,6 +74,9 @@ services:
 
       # PowerShell 腳本 (只讀)
       - ./scripts:/scripts:ro
+
+      # SSL 憑證 (只讀)
+      - C:/spotify/certs:/certs:ro
 
       # ⭐ 重要: 掛載 Podman socket 以監控容器
       - /run/podman/podman.sock:/var/run/docker.sock

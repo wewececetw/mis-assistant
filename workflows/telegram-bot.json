@@ -1,0 +1,191 @@
+{
+  "name": "Telegram Bot",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{"field": "seconds", "secondsInterval": 5}]
+        }
+      },
+      "id": "schedule",
+      "name": "Every 5s",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $env.TELEGRAM_BOT_TOKEN + '/getUpdates' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({offset: -1, limit: 1, timeout: 0}) }}",
+        "options": {}
+      },
+      "id": "get-updates",
+      "name": "Get Updates",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const updates = $input.first().json.result || [];\nif (updates.length === 0) return [];\n\nconst update = updates[0];\nconst msg = update.message;\nif (!msg || !msg.text) return [];\n\nconst text = msg.text.trim();\nif (!text.startsWith('/')) return [];\n\nconst cmd = text.substring(1).split(/[@\\s]/)[0].toLowerCase();\nreturn [{json: {command: cmd, chatId: msg.chat.id, updateId: update.update_id}}];"
+      },
+      "id": "parse",
+      "name": "Parse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.command }}",
+        "rules": {
+          "rules": [
+            {"value2": "start", "output": 1},
+            {"value2": "status", "output": 2},
+            {"value2": "backup", "output": 3},
+            {"value2": "news", "output": 4},
+            {"value2": "meeting", "output": 5},
+            {"value2": "help", "output": 6}
+          ]
+        },
+        "fallbackOutput": 0
+      },
+      "id": "switch",
+      "name": "Switch",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json: {message: '未知指令，輸入 /help 查看幫助', chatId: $node.Parse.json.chatId, updateId: $node.Parse.json.updateId}}];"
+      },
+      "id": "unknown",
+      "name": "Unknown",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 700]
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = '🤖 歡迎使用 MIS 助理！\\n\\n📋 可用指令：\\n/status - 系統狀態\\n/backup - 資料庫備份\\n/news - 科技新聞\\n/meeting - 會議記錄\\n/help - 幫助';\nreturn [{json: {message: msg, chatId: $node.Parse.json.chatId, updateId: $node.Parse.json.updateId}}];"
+      },
+      "id": "start",
+      "name": "Start",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = '✅ [系統狀態]\\nBot: 運行中\\n時間: ' + new Date().toLocaleString('zh-TW');\nreturn [{json: {message: msg, chatId: $node.Parse.json.chatId, updateId: $node.Parse.json.updateId}}];"
+      },
+      "id": "status",
+      "name": "Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json: {message: '💾 [備份]\\n功能開發中...', chatId: $node.Parse.json.chatId, updateId: $node.Parse.json.updateId}}];"
+      },
+      "id": "backup",
+      "name": "Backup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json: {message: '📰 [新聞]\\n功能開發中...', chatId: $node.Parse.json.chatId, updateId: $node.Parse.json.updateId}}];"
+      },
+      "id": "news",
+      "name": "News",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json: {message: '📝 [會議記錄]\\n功能開發中...', chatId: $node.Parse.json.chatId, updateId: $node.Parse.json.updateId}}];"
+      },
+      "id": "meeting",
+      "name": "Meeting",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = '❓ [幫助]\\n\\n可用指令：\\n/start - 開始使用\\n/status - 系統狀態\\n/backup - 資料庫備份\\n/news - 科技新聞\\n/meeting - 會議記錄\\n/help - 顯示此幫助';\nreturn [{json: {message: msg, chatId: $node.Parse.json.chatId, updateId: $node.Parse.json.updateId}}];"
+      },
+      "id": "help",
+      "name": "Help",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 650]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.message }}"
+      },
+      "id": "send",
+      "name": "Send",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [1340, 400],
+      "credentials": {
+        "telegramApi": {
+          "id": "XfuqkzOYYEa0ar0n",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $env.TELEGRAM_BOT_TOKEN + '/getUpdates' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({offset: $json.updateId + 1, limit: 1, timeout: 0}) }}",
+        "options": {}
+      },
+      "id": "ack",
+      "name": "Ack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 400]
+    }
+  ],
+  "connections": {
+    "Every 5s": {"main": [[{"node": "Get Updates", "type": "main", "index": 0}]]},
+    "Get Updates": {"main": [[{"node": "Parse", "type": "main", "index": 0}]]},
+    "Parse": {"main": [[{"node": "Switch", "type": "main", "index": 0}]]},
+    "Switch": {"main": [
+      [{"node": "Unknown", "type": "main", "index": 0}],
+      [{"node": "Start", "type": "main", "index": 0}],
+      [{"node": "Status", "type": "main", "index": 0}],
+      [{"node": "Backup", "type": "main", "index": 0}],
+      [{"node": "News", "type": "main", "index": 0}],
+      [{"node": "Meeting", "type": "main", "index": 0}],
+      [{"node": "Help", "type": "main", "index": 0}]
+    ]},
+    "Unknown": {"main": [[{"node": "Send", "type": "main", "index": 0}]]},
+    "Start": {"main": [[{"node": "Send", "type": "main", "index": 0}]]},
+    "Status": {"main": [[{"node": "Send", "type": "main", "index": 0}]]},
+    "Backup": {"main": [[{"node": "Send", "type": "main", "index": 0}]]},
+    "News": {"main": [[{"node": "Send", "type": "main", "index": 0}]]},
+    "Meeting": {"main": [[{"node": "Send", "type": "main", "index": 0}]]},
+    "Help": {"main": [[{"node": "Send", "type": "main", "index": 0}]]},
+    "Send": {"main": [[{"node": "Ack", "type": "main", "index": 0}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder": "v1"},
+  "id": "telegram-bot"
+}

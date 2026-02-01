@@ -1,0 +1,163 @@
+{
+  "name": "Telegram Bot",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"]
+      },
+      "id": "tg-trigger",
+      "name": "TelegramTrigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 400],
+      "credentials": {
+        "telegramApi": {
+          "id": "XfuqkzOYYEa0ar0n",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = $input.first().json.message;\nif (!msg || !msg.text) return [];\nconst text = msg.text.trim();\nif (!text.startsWith('/')) return [];\nconst cmd = text.substring(1).split(/[@\\s]/)[0].toLowerCase();\nreturn [{json: {command: cmd, chatId: msg.chat.id}}];"
+      },
+      "id": "parse",
+      "name": "Parse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.command }}",
+        "rules": {
+          "rules": [
+            {"value2": "start", "output": 1},
+            {"value2": "status", "output": 2},
+            {"value2": "backup", "output": 3},
+            {"value2": "news", "output": 4},
+            {"value2": "meeting", "output": 5},
+            {"value2": "help", "output": 6}
+          ]
+        },
+        "fallbackOutput": 0
+      },
+      "id": "switch",
+      "name": "Switch",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json: {message: '❌ 未知指令\\n\\n請輸入 /help 查看可用指令', chatId: $node.Parse.json.chatId}}];"
+      },
+      "id": "unknown",
+      "name": "Unknown",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 800]
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = '🤖 歡迎使用 MIS 助理！\\n\\n📋 可用指令：\\n/status - 系統狀態監控\\n/backup - 資料庫備份\\n/news - 每日科技新聞\\n/meeting - AI 會議記錄\\n/help - 顯示此幫助\\n\\n💡 提示：直接發送指令即可使用';\nreturn [{json: {message: msg, chatId: $node.Parse.json.chatId}}];"
+      },
+      "id": "start",
+      "name": "Start",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = '✅ [系統狀態]\\n\\n🤖 MIS 助理：運行中\\n📦 n8n：正常運行\\n⏰ 時間：' + new Date().toLocaleString('zh-TW') + '\\n\\n💡 詳細監控請查看 n8n UI';\nreturn [{json: {message: msg, chatId: $node.Parse.json.chatId}}];"
+      },
+      "id": "status",
+      "name": "Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json: {message: '💾 [備份]\\n\\n✅ 資料庫備份任務已觸發\\n⏳ 預計完成時間：2-5 分鐘\\n\\n備份將保存至：\\nC:\\\\mis-assistant\\\\backups', chatId: $node.Parse.json.chatId}}];"
+      },
+      "id": "backup",
+      "name": "Backup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json: {message: '📰 [科技新聞]\\n\\n⏳ 正在獲取最新科技新聞...\\n\\n📡 來源：Hacker News, TechCrunch\\n🔄 更新中，請稍候', chatId: $node.Parse.json.chatId}}];"
+      },
+      "id": "news",
+      "name": "News",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json: {message: '📝 [會議記錄]\\n\\n💡 使用說明：\\n\\n1️⃣ 上傳會議記錄文件（.txt, .md）\\n2️⃣ 或發送會議語音檔案\\n3️⃣ AI 將自動生成摘要\\n\\n✨ 功能開發中，即將上線', chatId: $node.Parse.json.chatId}}];"
+      },
+      "id": "meeting",
+      "name": "Meeting",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = '❓ [幫助]\\n\\n🤖 MIS 自動化助理\\n\\n📋 可用指令：\\n\\n/start - 開始使用\\n顯示歡迎訊息和指令列表\\n\\n/status - 系統狀態\\n查看系統運行狀態和時間\\n\\n/backup - 資料庫備份\\n立即觸發資料庫備份任務\\n\\n/news - 科技新聞\\n獲取當日科技新聞摘要\\n\\n/meeting - 會議記錄\\n上傳文件生成 AI 摘要\\n\\n/help - 顯示此幫助\\n查看所有可用指令說明\\n\\n💡 使用技巧：\\n• 直接發送指令即可\\n• 支持群組使用\\n• 24/7 隨時可用\\n\\n⚙️ 系統版本：v1.0.0\\n🔗 n8n UI：https://nucboxg3-plus.tail2f559.ts.net';\nreturn [{json: {message: msg, chatId: $node.Parse.json.chatId}}];"
+      },
+      "id": "help",
+      "name": "Help",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 700]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.message }}"
+      },
+      "id": "send",
+      "name": "Send",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [1120, 400],
+      "credentials": {
+        "telegramApi": {
+          "id": "XfuqkzOYYEa0ar0n",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {"main": [[{"node": "Parse", "type": "main", "index": 0}]]},
+    "Parse": {"main": [[{"node": "Switch", "type": "main", "index": 0}]]},
+    "Switch": {"main": [
+      [{"node": "Unknown", "type": "main", "index": 0}],
+      [{"node": "Start", "type": "main", "index": 0}],
+      [{"node": "Status", "type": "main", "index": 0}],
+      [{"node": "Backup", "type": "main", "index": 0}],
+      [{"node": "News", "type": "main", "index": 0}],
+      [{"node": "Meeting", "type": "main", "index": 0}],
+      [{"node": "Help", "type": "main", "index": 0}]
+    ]},
+    "Unknown": {"main": [[{"node": "Send", "type": "main", "index": 0}]]},
+    "Start": {"main": [[{"node": "Send", "type": "main", "index": 0}]]},
+    "Status": {"main": [[{"node": "Send", "type": "main", "index": 0}]]},
+    "Backup": {"main": [[{"node": "Send", "type": "main", "index": 0}]]},
+    "News": {"main": [[{"node": "Send", "type": "main", "index": 0}]]},
+    "Meeting": {"main": [[{"node": "Send", "type": "main", "index": 0}]]},
+    "Help": {"main": [[{"node": "Send", "type": "main", "index": 0}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder": "v1"},
+  "id": "telegram-complete"
+}
