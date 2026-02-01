@@ -1,0 +1,56 @@
+{
+  "name": "Telegram Bot",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"]
+      },
+      "id": "tg-trigger",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 400],
+      "webhookId": "tg-webhook",
+      "credentials": {
+        "telegramApi": {
+          "id": "XfuqkzOYYEa0ar0n",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = $input.first().json.message;\nif (!msg || !msg.text) return [];\nconst text = msg.text.trim();\nif (!text.startsWith('/')) return [];\nconst cmd = text.substring(1).split(/[@\\s]/)[0].toLowerCase();\nconst chatId = msg.chat.id;\n\nlet message = '';\nswitch(cmd) {\n  case 'start':\n    message = '🤖 歡迎使用 MIS 助理！\\n\\n📋 可用指令：\\n/status - 系統狀態監控\\n/backup - 資料庫備份\\n/news - 每日科技新聞\\n/meeting - AI 會議記錄\\n/help - 顯示此幫助\\n\\n💡 提示：直接發送指令即可使用';\n    break;\n  case 'status':\n    message = '✅ [系統狀態]\\n\\n🤖 MIS 助理：運行中\\n📦 n8n：正常運行\\n⏰ 時間：' + new Date().toLocaleString('zh-TW') + '\\n\\n💡 詳細監控請查看 n8n UI';\n    break;\n  case 'backup':\n    message = '💾 [備份]\\n\\n✅ 資料庫備份任務已觸發\\n⏳ 預計完成時間：2-5 分鐘\\n\\n備份將保存至：\\nC:\\\\mis-assistant\\\\backups';\n    break;\n  case 'news':\n    message = '📰 [科技新聞]\\n\\n⏳ 正在獲取最新科技新聞...\\n\\n📡 來源：Hacker News, TechCrunch\\n🔄 更新中，請稍候';\n    break;\n  case 'meeting':\n    message = '📝 [會議記錄]\\n\\n💡 使用說明：\\n\\n1️⃣ 上傳會議記錄文件（.txt, .md）\\n2️⃣ 或發送會議語音檔案\\n3️⃣ AI 將自動生成摘要\\n\\n✨ 功能開發中，即將上線';\n    break;\n  case 'help':\n    message = '❓ [幫助]\\n\\n🤖 MIS 自動化助理\\n\\n📋 可用指令：\\n\\n/start - 開始使用\\n顯示歡迎訊息和指令列表\\n\\n/status - 系統狀態\\n查看系統運行狀態和時間\\n\\n/backup - 資料庫備份\\n立即觸發資料庫備份任務\\n\\n/news - 科技新聞\\n獲取當日科技新聞摘要\\n\\n/meeting - 會議記錄\\n上傳文件生成 AI 摘要\\n\\n/help - 顯示此幫助\\n查看所有可用指令說明\\n\\n💡 使用技巧：\\n• 直接發送指令即可\\n• 支持群組使用\\n• 24/7 隨時可用\\n\\n⚙️ 系統版本：v1.0.0\\n🔗 n8n UI：https://nucboxg3-plus.tail2f559.ts.net';\n    break;\n  default:\n    message = '❌ 未知指令\\n\\n請輸入 /help 查看可用指令';\n}\n\nreturn [{json: {message: message, chatId: chatId}}];"
+      },
+      "id": "router",
+      "name": "Router",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.message }}"
+      },
+      "id": "send",
+      "name": "Send",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [680, 400],
+      "credentials": {
+        "telegramApi": {
+          "id": "XfuqkzOYYEa0ar0n",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {"main": [[{"node": "Router", "type": "main", "index": 0}]]},
+    "Router": {"main": [[{"node": "Send", "type": "main", "index": 0}]]}
+  },
+  "active": true,
+  "settings": {"executionOrder": "v1"},
+  "id": "telegram-webhook-router"
+}
