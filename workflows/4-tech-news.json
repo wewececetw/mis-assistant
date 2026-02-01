@@ -108,50 +108,27 @@
       "parameters": {
         "method": "POST",
         "url": "https://api.groq.com/openai/v1/chat/completions",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $env.GROQ_API_KEY }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "model",
-              "value": "llama-3.3-70b-versatile"
-            },
-            {
-              "name": "messages",
-              "value": "={{ JSON.stringify([{role: 'system', content: '你是科技新聞翻譯和摘要助手。請將以下英文科技新聞翻譯成繁體中文,並摘要成2-3句話。格式:\\n\\n📰 [標題]\\n📝 [2-3句摘要]\\n🏷️ [類別: AI/硬體/軟體/其他]\\n\\n只回傳這個格式,不要其他內容。'}, {role: 'user', content: 'Title: ' + $json.title + '\\nDescription: ' + $json.description}]) }}"
-            },
-            {
-              "name": "temperature",
-              "value": "0.5"
-            },
-            {
-              "name": "max_tokens",
-              "value": "300"
-            }
-          ]
-        },
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'system', content: '你是科技新聞翻譯和摘要助手。請將以下英文科技新聞翻譯成繁體中文,並摘要成2-3句話。格式:\\n\\n📰 [標題]\\n📝 [2-3句摘要]\\n🏷️ [類別: AI/硬體/軟體/其他]\\n\\n只回傳這個格式,不要其他內容。' }, { role: 'user', content: 'Title: ' + $json.title + '\\nDescription: ' + $json.description }], temperature: 0.5, max_tokens: 300 }) }}",
         "options": {}
       },
       "id": "translate-with-groq",
       "name": "Translate with Groq",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
+      "typeVersion": 4.2,
       "position": [
         1120,
         400
-      ]
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "06uVsarrbPv5XTZf",
+          "name": "Groq API"
+        }
+      }
     },
     {
       "parameters": {

@@ -1,41 +1,698 @@
 {
   "name": "Telegram Bot V3",
   "nodes": [
-    {"parameters":{"updates":["message"]},"id":"tg","name":"Telegram","type":"n8n-nodes-base.telegramTrigger","typeVersion":1.1,"position":[240,400],"webhookId":"tg-v3","credentials":{"telegramApi":{"id":"XfuqkzOYYEa0ar0n","name":"Telegram Bot"}}},
-    {"parameters":{"jsCode":"const msg=$input.first().json.message;const chatId=msg?.chat?.id||'';const text=msg?.text?.trim()||'';const voice=msg?.voice||msg?.audio;const voiceFileId=voice?.file_id||'';let action='unknown';if(voiceFileId){action='voice';return[{json:{action,chatId,voiceFileId}}]}if(text.startsWith('/')){action=text.substring(1).split(/[@\\s]/)[0].toLowerCase()}const r={start:'🤖 MIS\\n\\n/status /backup /news /meeting\\n\\n🎤語音=AI記錄',meeting:'📝 會議\\n\\n🎤直接發語音',help:'❓ /help',unknown:'❌ 未知'};if(r[action]){return[{json:{action:'reply',chatId,message:r[action]}}]}return[{json:{action,chatId,text}}]"},"id":"router","name":"Router","type":"n8n-nodes-base.code","typeVersion":2,"position":[460,400]},
-    {"parameters":{"conditions":{"conditions":[{"leftValue":"={{$json.action}}","rightValue":"reply"}]}},"id":"is-reply","name":"Reply?","type":"n8n-nodes-base.if","typeVersion":2,"position":[680,400]},
-    {"parameters":{"chatId":"={{$json.chatId}}","text":"={{$json.message}}"},"id":"send","name":"Send","type":"n8n-nodes-base.telegram","typeVersion":1.1,"position":[900,300],"credentials":{"telegramApi":{"id":"XfuqkzOYYEa0ar0n","name":"Telegram Bot"}}},
-    {"parameters":{"conditions":{"conditions":[{"leftValue":"={{$json.action}}","rightValue":"voice"}]}},"id":"is-voice","name":"Voice?","type":"n8n-nodes-base.if","typeVersion":2,"position":[900,500]},
-    {"parameters":{"chatId":"={{$json.chatId}}","text":"🎤 處理中\\n⏳ 20-40s\\n1.壓縮 2.轉文字 3.AI摘要"},"id":"ack","name":"Ack","type":"n8n-nodes-base.telegram","typeVersion":1.1,"position":[1120,500],"credentials":{"telegramApi":{"id":"XfuqkzOYYEa0ar0n","name":"Telegram Bot"}}},
-    {"parameters":{"url":"=https://api.telegram.org/bot{{$env.TELEGRAM_BOT_TOKEN}}/getFile?file_id={{$('Router').first().json.voiceFileId}}"},"id":"getfile","name":"GetFile","type":"n8n-nodes-base.httpRequest","typeVersion":4.2,"position":[1340,500]},
-    {"parameters":{"url":"=https://api.telegram.org/file/bot{{$env.TELEGRAM_BOT_TOKEN}}/{{$json.result.file_path}}","options":{"response":{"response":{"responseFormat":"file"}}}},"id":"dl","name":"DL","type":"n8n-nodes-base.httpRequest","typeVersion":4.2,"position":[1560,500]},
-    {"parameters":{"fileName":"/tmp/vin.oga"},"id":"save","name":"Save","type":"n8n-nodes-base.writeBinaryFile","typeVersion":1,"position":[1780,500]},
-    {"parameters":{"jsCode":"const fs=require('fs');const{execSync}=require('child_process');try{execSync('ffmpeg -y -i /tmp/vin.oga -ar 16000 -ac 1 -b:a 32k /tmp/vout.mp3 2>&1');const buf=fs.readFileSync('/tmp/vout.mp3');return[{json:{},binary:{data:buf}}]}catch(e){throw new Error('FFmpeg failed: '+e.message)}"},"id":"compress","name":"Compress","type":"n8n-nodes-base.code","typeVersion":2,"position":[2000,500]},
-    {"parameters":{"method":"POST","url":"https://api.groq.com/openai/v1/audio/transcriptions","authentication":"genericCredentialType","genericAuthType":"httpHeaderAuth","sendBody":true,"contentType":"multipart-form-data","bodyParameters":{"parameters":[{"name":"file","parameterType":"formBinaryData","inputDataFieldName":"data"},{"name":"model","value":"whisper-large-v3"},{"name":"language","value":"zh"}]}},"id":"whisper","name":"Whisper","type":"n8n-nodes-base.httpRequest","typeVersion":4.2,"position":[2220,500],"credentials":{"httpHeaderAuth":{"id":"06uVsarrbPv5XTZf","name":"Groq API"}}},
-    {"parameters":{"jsCode":"const text=$input.first().json?.text||'';if(!text||text.length<5)return[{json:{ok:false}}];const p='分析語音轉文字，繁中摘要：\\n\\n📌主題\\n📋重點（2-3點）\\n✅決議\\n📝待辦\\n\\n內容：'+text;return[{json:{ok:true,text,prompt:p}}]"},"id":"prep","name":"Prep","type":"n8n-nodes-base.code","typeVersion":2,"position":[2440,500]},
-    {"parameters":{"conditions":{"conditions":[{"leftValue":"={{$json.ok}}","rightValue":true,"operator":{"type":"boolean","operation":"equals"}}]}},"id":"check","name":"OK?","type":"n8n-nodes-base.if","typeVersion":2,"position":[2660,500]},
-    {"parameters":{"method":"POST","url":"https://api.groq.com/openai/v1/chat/completions","authentication":"genericCredentialType","genericAuthType":"httpHeaderAuth","sendBody":true,"specifyBody":"json","jsonBody":"={{JSON.stringify({model:'llama-3.3-70b-versatile',messages:[{role:'user',content:$json.prompt}],temperature:0.3,max_tokens:1000})}}"},"id":"ai","name":"AI","type":"n8n-nodes-base.httpRequest","typeVersion":4.2,"position":[2880,440],"credentials":{"httpHeaderAuth":{"id":"06uVsarrbPv5XTZf","name":"Groq API"}}},
-    {"parameters":{"jsCode":"const chatId=$('Router').first().json.chatId;const text=$('Prep').first().json.text;let s=$input.first().json?.choices?.[0]?.message?.content||'失敗';s=s.replace(/\\*\\*/g,'').replace(/\\*/g,'•');const msg='🤖 AI會議記錄\\n━━━━━━━━\\n\\n'+s+'\\n\\n━━━━━━━━\\n📝原文：'+text.substring(0,60)+'...';return[{json:{message:msg,chatId}}]"},"id":"fmt","name":"Fmt","type":"n8n-nodes-base.code","typeVersion":2,"position":[3100,440]},
-    {"parameters":{"chatId":"={{$json.chatId}}","text":"={{$json.message}}"},"id":"send-ok","name":"SendOK","type":"n8n-nodes-base.telegram","typeVersion":1.1,"position":[3320,440],"credentials":{"telegramApi":{"id":"XfuqkzOYYEa0ar0n","name":"Telegram Bot"}}},
-    {"parameters":{"jsCode":"const chatId=$('Router').first().json.chatId;return[{json:{message:'❌ 失敗\\n請重錄清晰語音',chatId}}]"},"id":"err","name":"Err","type":"n8n-nodes-base.code","typeVersion":2,"position":[2880,560]},
-    {"parameters":{"chatId":"={{$json.chatId}}","text":"={{$json.message}}"},"id":"send-err","name":"SendErr","type":"n8n-nodes-base.telegram","typeVersion":1.1,"position":[3100,560],"credentials":{"telegramApi":{"id":"XfuqkzOYYEa0ar0n","name":"Telegram Bot"}}}
+    {
+      "parameters": {
+        "updates": ["message"]
+      },
+      "id": "tg-trigger",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 400],
+      "webhookId": "tg-v3",
+      "credentials": {
+        "telegramApi": {
+          "id": "XfuqkzOYYEa0ar0n",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = $input.first().json.message;\nconst chatId = msg?.chat?.id || '';\nconst text = (msg?.text || '').trim();\nconst voice = msg?.voice || msg?.audio || msg?.video_note;\nconst voiceFileId = voice?.file_id || '';\nconst duration = voice?.duration || 0;\n\n// Voice message\nif (voiceFileId) {\n  return [{ json: { action: 'voice', chatId, voiceFileId, duration } }];\n}\n\n// Commands\nif (text.startsWith('/')) {\n  const cmd = text.substring(1).split(/[@\\s]/)[0].toLowerCase();\n  const replies = {\n    start: '🤖 MIS 自動化助理\\n\\n可用指令：\\n/status - 容器狀態\\n/meeting - 會議記錄說明\\n/news - 科技新聞（繁中）\\n/help - 完整說明\\n\\n🎤 直接發語音 = AI 會議記錄\\n📝 直接貼文字 = AI 摘要',\n    help: '❓ 使用說明\\n\\n━━━━ 會議記錄 ━━━━\\n🎤 語音：直接發送語音訊息\\n📝 文字：直接貼上會議文字（>20字）\\n→ AI 自動產生結構化摘要\\n\\n━━━━ 指令列表 ━━━━\\n/status - Docker 容器狀態\\n/meeting - 會議記錄功能說明\\n/news - 今日科技新聞（繁中翻譯）\\n/help - 顯示本說明\\n\\n⚠️ 語音限制：目前僅支援 < 20MB',\n    meeting: '📝 會議記錄功能\\n\\n使用方式：\\n1️⃣ 語音：直接發送語音訊息\\n2️⃣ 文字：直接貼上會議文字（>20字）\\n\\nBot 會自動：\\n• 語音轉文字（Whisper）\\n• AI 產生結構化摘要\\n• 提取決議、待辦、負責人\\n\\n⏱ 處理時間約 20-60 秒\\n⚠️ 語音限制：目前僅支援 < 20MB'\n  };\n  if (replies[cmd]) {\n    return [{ json: { action: 'reply', chatId, message: replies[cmd] } }];\n  }\n  // status / news - pass through\n  return [{ json: { action: cmd, chatId, text } }];\n}\n\n// Plain text - treat as meeting notes\nif (text.length > 20) {\n  return [{ json: { action: 'text-meeting', chatId, text } }];\n}\n\nreturn [{ json: { action: 'reply', chatId, message: '💡 發送語音訊息可自動產生會議記錄\\n或輸入 /help 查看說明' } }];"
+      },
+      "id": "router",
+      "name": "Router",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "reply",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "is-reply",
+      "name": "Is Reply?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.message }}"
+      },
+      "id": "send-reply",
+      "name": "Send Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [900, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "XfuqkzOYYEa0ar0n",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "voice",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "is-voice",
+      "name": "Is Voice?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 500]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "🎤 語音處理中...\n⏳ 請稍候 20-60 秒\n\n1️⃣ 下載語音\n2️⃣ 轉檔壓縮\n3️⃣ 語音轉文字\n4️⃣ AI 摘要"
+      },
+      "id": "voice-ack",
+      "name": "Voice Ack",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [1120, 500],
+      "credentials": {
+        "telegramApi": {
+          "id": "XfuqkzOYYEa0ar0n",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/getFile?file_id={{ $('Router').first().json.voiceFileId }}",
+        "options": {}
+      },
+      "id": "get-file-info",
+      "name": "Get File Info",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 500]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.telegram.org/file/bot{{ $env.TELEGRAM_BOT_TOKEN }}/{{ $json.result.file_path }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "download-voice",
+      "name": "Download Voice",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 500]
+    },
+    {
+      "parameters": {
+        "fileName": "/tmp/voice_input.oga"
+      },
+      "id": "save-voice",
+      "name": "Save Voice",
+      "type": "n8n-nodes-base.writeBinaryFile",
+      "typeVersion": 1,
+      "position": [1780, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { execSync } = require('child_process');\nconst fs = require('fs');\nconst chatId = $('Router').first().json.chatId;\nconst duration = $('Router').first().json.duration || 0;\n\n// Convert OGA to MP3\nexecSync('ffmpeg -y -i /tmp/voice_input.oga -ar 16000 -ac 1 -b:a 32k /tmp/voice_converted.mp3', { timeout: 60000 });\n\nconst stats = fs.statSync('/tmp/voice_converted.mp3');\nconst fileSize = stats.size;\n\n// Decide whether to split\nlet segments = 1;\nif (fileSize > 20000000 || duration > 600) {\n  segments = Math.ceil(duration / 300);\n  for (let i = 0; i < segments; i++) {\n    const start = i * 300;\n    execSync(`ffmpeg -y -i /tmp/voice_converted.mp3 -ss ${start} -t 300 -ar 16000 -ac 1 -b:a 32k /tmp/voice_part_${i}.mp3`, { timeout: 60000 });\n  }\n} else {\n  fs.copyFileSync('/tmp/voice_converted.mp3', '/tmp/voice_part_0.mp3');\n}\n\nconst files = [];\nfor (let i = 0; i < segments; i++) {\n  files.push({ json: { filePath: `/tmp/voice_part_${i}.mp3`, partIndex: i, totalParts: segments, chatId } });\n}\nreturn files;"
+      },
+      "id": "convert-split",
+      "name": "Convert & Split",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst filePath = $input.first().json.filePath;\nconst partIndex = $input.first().json.partIndex;\nconst totalParts = $input.first().json.totalParts;\nconst chatId = $input.first().json.chatId;\n\nconst fileBuffer = fs.readFileSync(filePath);\nconst base64 = fileBuffer.toString('base64');\n\nreturn [{\n  json: { partIndex, totalParts, chatId },\n  binary: {\n    data: {\n      data: base64,\n      mimeType: 'audio/mpeg',\n      fileName: `voice_part_${partIndex}.mp3`\n    }\n  }\n}];"
+      },
+      "id": "read-audio-file",
+      "name": "Read Audio File",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 500]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/audio/transcriptions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "file",
+              "parameterType": "formBinaryData",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "model",
+              "value": "whisper-large-v3"
+            },
+            {
+              "name": "language",
+              "value": "zh"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "whisper-transcribe",
+      "name": "Whisper Transcribe",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2660, 500],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "06uVsarrbPv5XTZf",
+          "name": "Groq API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect all transcription results\nconst items = $input.all();\nconst chatId = items[0]?.json?.chatId || $('Router').first().json.chatId;\n\n// Sort by part index and combine text\nconst parts = items.map((item, idx) => ({\n  index: item.json.partIndex || idx,\n  text: item.json.text || ''\n}));\nparts.sort((a, b) => a.index - b.index);\n\nconst fullText = parts.map(p => p.text).join('\\n').trim();\n\nif (!fullText || fullText.length < 5) {\n  return [{ json: { ok: false, chatId, error: '語音內容太短或無法辨識' } }];\n}\n\nconst prompt = `你是專業的會議記錄助理。請分析以下語音轉文字內容，以繁體中文產生結構化的會議摘要。\n\n請包含：\n📌 主題（1句話）\n📋 重點摘要（3-5點）\n✅ 決議事項\n📝 待辦事項（含負責人，如有提及）\n⏰ 下次會議/後續行動（如有提及）\n\n語音內容：\n${fullText}`;\n\nreturn [{ json: { ok: true, chatId, fullText, prompt } }];"
+      },
+      "id": "merge-transcripts",
+      "name": "Merge Transcripts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2880, 500]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "id": "c3",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "transcript-ok",
+      "name": "Transcript OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [3100, 500]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: $json.prompt }], temperature: 0.3, max_tokens: 1500 }) }}",
+        "options": {}
+      },
+      "id": "ai-summarize",
+      "name": "AI Summarize",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3320, 440],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "06uVsarrbPv5XTZf",
+          "name": "Groq API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const chatId = $('Merge Transcripts').first().json.chatId;\nconst fullText = $('Merge Transcripts').first().json.fullText;\nlet summary = $input.first().json?.choices?.[0]?.message?.content || '摘要產生失敗';\n\n// Clean markdown for Telegram\nsummary = summary.replace(/\\*\\*/g, '').replace(/\\*/g, '').replace(/###?\\s?/g, '').replace(/---/g, '━━━━━━━━');\n\nconst textPreview = fullText.length > 80 ? fullText.substring(0, 80) + '...' : fullText;\n\nconst msg = '🤖 AI 會議記錄\\n━━━━━━━━\\n\\n' + summary + '\\n\\n━━━━━━━━\\n📝 原始語音文字：\\n' + textPreview;\n\nreturn [{ json: { chatId, message: msg } }];"
+      },
+      "id": "format-result",
+      "name": "Format Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3540, 440]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.message }}"
+      },
+      "id": "send-result",
+      "name": "Send Result",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [3760, 440],
+      "credentials": {
+        "telegramApi": {
+          "id": "XfuqkzOYYEa0ar0n",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const chatId = $('Merge Transcripts').first().json?.chatId || $('Router').first().json.chatId;\nconst error = $('Merge Transcripts').first().json?.error || '語音處理失敗';\nreturn [{ json: { chatId, message: '❌ ' + error + '\\n\\n請重新錄製清晰語音再試一次' } }];"
+      },
+      "id": "voice-error",
+      "name": "Voice Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3320, 600]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.message }}"
+      },
+      "id": "send-error",
+      "name": "Send Error",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [3540, 600],
+      "credentials": {
+        "telegramApi": {
+          "id": "XfuqkzOYYEa0ar0n",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "id": "c4",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "text-meeting",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "is-text-meeting",
+      "name": "Is Text Meeting?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 700]
+    },
+    {
+      "parameters": {
+        "jsCode": "const chatId = $input.first().json.chatId;\nconst text = $input.first().json.text;\n\nconst prompt = `你是專業的會議記錄助理。請分析以下會議記錄文字，以繁體中文產生結構化的會議摘要。\n\n請包含：\n📌 主題（1句話）\n📋 重點摘要（3-5點）\n✅ 決議事項\n📝 待辦事項（含負責人，如有提及）\n⏰ 下次會議/後續行動（如有提及）\n\n會議記錄：\n${text}`;\n\nreturn [{ json: { chatId, text, prompt } }];"
+      },
+      "id": "prep-text-meeting",
+      "name": "Prep Text Meeting",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 700]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: $json.prompt }], temperature: 0.3, max_tokens: 1500 }) }}",
+        "options": {}
+      },
+      "id": "ai-text-meeting",
+      "name": "AI Text Meeting",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 700],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "06uVsarrbPv5XTZf",
+          "name": "Groq API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const chatId = $('Prep Text Meeting').first().json.chatId;\nlet summary = $input.first().json?.choices?.[0]?.message?.content || '摘要產生失敗';\nsummary = summary.replace(/\\*\\*/g, '').replace(/\\*/g, '').replace(/###?\\s?/g, '').replace(/---/g, '━━━━━━━━');\nconst msg = '🤖 AI 會議記錄\\n━━━━━━━━\\n\\n' + summary;\nreturn [{ json: { chatId, message: msg } }];"
+      },
+      "id": "format-text-meeting",
+      "name": "Format Text Meeting",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 700]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.message }}"
+      },
+      "id": "send-text-meeting",
+      "name": "Send Text Meeting",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [1780, 700],
+      "credentials": {
+        "telegramApi": {
+          "id": "XfuqkzOYYEa0ar0n",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "id": "c5",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "status",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "is-status",
+      "name": "Is Status?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 900]
+    },
+    {
+      "parameters": {
+        "url": "http://docker-api-proxy:2375/containers/json?all=true",
+        "options": {}
+      },
+      "id": "get-containers",
+      "name": "Get Containers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 900]
+    },
+    {
+      "parameters": {
+        "jsCode": "const containers = $input.all().map(i => i.json);\nconst chatId = $('Router').first().json.chatId;\nconst running = containers.filter(c => c.State === 'running');\n\nlet msg = '🐳 Docker 容器狀態\\n━━━━━━━━\\n';\nmsg += `📊 ${running.length}/${containers.length} 運行中\\n\\n`;\n\nfor (const c of containers) {\n  const name = (c.Names && c.Names[0]) ? c.Names[0].replace('/', '') : 'unknown';\n  const icon = c.State === 'running' ? '✅' : '❌';\n  msg += `${icon} ${name} (${c.Status})\\n`;\n}\n\nmsg += `\\n⏰ ${new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}`;\nreturn [{ json: { chatId, message: msg } }];"
+      },
+      "id": "format-status",
+      "name": "Format Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 900]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.message }}"
+      },
+      "id": "send-status",
+      "name": "Send Status",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [1560, 900],
+      "credentials": {
+        "telegramApi": {
+          "id": "XfuqkzOYYEa0ar0n",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "id": "c6",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "news",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "is-news",
+      "name": "Is News?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 1100]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "📰 正在抓取科技新聞...\n⏳ 請稍候 30-60 秒\n\n1️⃣ 抓取 RSS\n2️⃣ AI 翻譯成繁中\n3️⃣ 整理摘要"
+      },
+      "id": "news-ack",
+      "name": "News Ack",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [1120, 1100],
+      "credentials": {
+        "telegramApi": {
+          "id": "XfuqkzOYYEa0ar0n",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://techcrunch.com/feed/",
+        "options": {}
+      },
+      "id": "fetch-techcrunch",
+      "name": "Fetch TechCrunch",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [1340, 1000]
+    },
+    {
+      "parameters": {
+        "url": "https://www.theverge.com/rss/index.xml",
+        "options": {}
+      },
+      "id": "fetch-theverge",
+      "name": "Fetch The Verge",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [1340, 1100]
+    },
+    {
+      "parameters": {
+        "url": "https://hnrss.org/frontpage",
+        "options": {}
+      },
+      "id": "fetch-hackernews",
+      "name": "Fetch Hacker News",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [1340, 1200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const allItems = $input.all();\nconst chatId = $('Router').first().json.chatId;\nconst now = new Date();\nconst oneDayAgo = new Date(now - 24 * 60 * 60 * 1000);\n\nlet articles = [];\nallItems.forEach(item => {\n  if (item.json.title) {\n    const pubDate = item.json.pubDate ? new Date(item.json.pubDate) : now;\n    if (pubDate >= oneDayAgo) {\n      articles.push({\n        title: item.json.title,\n        link: item.json.link,\n        description: (item.json.description || item.json.contentSnippet || '').substring(0, 200)\n      });\n    }\n  }\n});\n\narticles = articles.slice(0, 5);\n\nconst newsText = articles.map((a, i) => `${i+1}. ${a.title}\\n${a.description}`).join('\\n\\n');\n\nconst prompt = `你是科技新聞翻譯助手。請將以下英文科技新聞翻譯成繁體中文，並為每則新聞產生簡短摘要（1-2句）。\n\n格式：\n📰 [繁中標題]\n📝 [1-2句摘要]\n🏷️ [類別: AI/硬體/軟體/其他]\n\n新聞：\n${newsText}`;\n\nreturn [{ json: { chatId, articles, prompt } }];"
+      },
+      "id": "merge-news",
+      "name": "Merge News",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 1100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: $json.prompt }], temperature: 0.5, max_tokens: 2000 }) }}",
+        "options": {}
+      },
+      "id": "ai-translate-news",
+      "name": "AI Translate News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 1100],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "06uVsarrbPv5XTZf",
+          "name": "Groq API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const chatId = $('Merge News').first().json.chatId;\nconst articles = $('Merge News').first().json.articles;\nlet translated = $input.first().json?.choices?.[0]?.message?.content || '';\n\ntranslated = translated.replace(/\\*\\*/g, '').replace(/\\*/g, '').replace(/###?\\s?/g, '');\n\nconst today = new Date().toISOString().split('T')[0];\nlet msg = `🗓️ ${today} 科技新聞摘要\\n━━━━━━━━\\n\\n`;\nmsg += translated;\nmsg += `\\n\\n━━━━━━━━\\n`;\nmsg += `🔗 來源連結：\\n`;\narticles.forEach((a, i) => {\n  msg += `${i+1}. ${a.link}\\n`;\n});\nmsg += `\\n⏰ ${new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}`;\n\nreturn [{ json: { chatId, message: msg } }];"
+      },
+      "id": "format-news",
+      "name": "Format News",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 1100]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.message }}"
+      },
+      "id": "send-news",
+      "name": "Send News",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [2220, 1100],
+      "credentials": {
+        "telegramApi": {
+          "id": "XfuqkzOYYEa0ar0n",
+          "name": "Telegram Bot"
+        }
+      }
+    }
   ],
-  "connections":{
-    "Telegram":{"main":[[{"node":"Router"}]]},
-    "Router":{"main":[[{"node":"Reply?"}]]},
-    "Reply?":{"main":[[{"node":"Send"}],[{"node":"Voice?"}]]},
-    "Voice?":{"main":[[{"node":"Ack"}],[]]},
-    "Ack":{"main":[[{"node":"GetFile"}]]},
-    "GetFile":{"main":[[{"node":"DL"}]]},
-    "DL":{"main":[[{"node":"Save"}]]},
-    "Save":{"main":[[{"node":"Compress"}]]},
-    "Compress":{"main":[[{"node":"Whisper"}]]},
-    "Whisper":{"main":[[{"node":"Prep"}]]},
-    "Prep":{"main":[[{"node":"OK?"}]]},
-    "OK?":{"main":[[{"node":"AI"}],[{"node":"Err"}]]},
-    "AI":{"main":[[{"node":"Fmt"}]]},
-    "Fmt":{"main":[[{"node":"SendOK"}]]},
-    "Err":{"main":[[{"node":"SendErr"}]]}
+  "connections": {
+    "Telegram Trigger": {
+      "main": [[{ "node": "Router", "type": "main", "index": 0 }]]
+    },
+    "Router": {
+      "main": [[{ "node": "Is Reply?", "type": "main", "index": 0 }]]
+    },
+    "Is Reply?": {
+      "main": [
+        [{ "node": "Send Reply", "type": "main", "index": 0 }],
+        [{ "node": "Is Voice?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Is Voice?": {
+      "main": [
+        [{ "node": "Voice Ack", "type": "main", "index": 0 }],
+        [{ "node": "Is Text Meeting?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Voice Ack": {
+      "main": [[{ "node": "Get File Info", "type": "main", "index": 0 }]]
+    },
+    "Get File Info": {
+      "main": [[{ "node": "Download Voice", "type": "main", "index": 0 }]]
+    },
+    "Download Voice": {
+      "main": [[{ "node": "Save Voice", "type": "main", "index": 0 }]]
+    },
+    "Save Voice": {
+      "main": [[{ "node": "Convert & Split", "type": "main", "index": 0 }]]
+    },
+    "Convert & Split": {
+      "main": [[{ "node": "Read Audio File", "type": "main", "index": 0 }]]
+    },
+    "Read Audio File": {
+      "main": [[{ "node": "Whisper Transcribe", "type": "main", "index": 0 }]]
+    },
+    "Whisper Transcribe": {
+      "main": [[{ "node": "Merge Transcripts", "type": "main", "index": 0 }]]
+    },
+    "Merge Transcripts": {
+      "main": [[{ "node": "Transcript OK?", "type": "main", "index": 0 }]]
+    },
+    "Transcript OK?": {
+      "main": [
+        [{ "node": "AI Summarize", "type": "main", "index": 0 }],
+        [{ "node": "Voice Error", "type": "main", "index": 0 }]
+      ]
+    },
+    "AI Summarize": {
+      "main": [[{ "node": "Format Result", "type": "main", "index": 0 }]]
+    },
+    "Format Result": {
+      "main": [[{ "node": "Send Result", "type": "main", "index": 0 }]]
+    },
+    "Voice Error": {
+      "main": [[{ "node": "Send Error", "type": "main", "index": 0 }]]
+    },
+    "Is Text Meeting?": {
+      "main": [
+        [{ "node": "Prep Text Meeting", "type": "main", "index": 0 }],
+        [{ "node": "Is Status?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Prep Text Meeting": {
+      "main": [[{ "node": "AI Text Meeting", "type": "main", "index": 0 }]]
+    },
+    "AI Text Meeting": {
+      "main": [[{ "node": "Format Text Meeting", "type": "main", "index": 0 }]]
+    },
+    "Format Text Meeting": {
+      "main": [[{ "node": "Send Text Meeting", "type": "main", "index": 0 }]]
+    },
+    "Is Status?": {
+      "main": [
+        [{ "node": "Get Containers", "type": "main", "index": 0 }],
+        [{ "node": "Is News?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Is News?": {
+      "main": [
+        [{ "node": "News Ack", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "News Ack": {
+      "main": [[{ "node": "Fetch TechCrunch", "type": "main", "index": 0 }, { "node": "Fetch The Verge", "type": "main", "index": 0 }, { "node": "Fetch Hacker News", "type": "main", "index": 0 }]]
+    },
+    "Fetch TechCrunch": {
+      "main": [[{ "node": "Merge News", "type": "main", "index": 0 }]]
+    },
+    "Fetch The Verge": {
+      "main": [[{ "node": "Merge News", "type": "main", "index": 0 }]]
+    },
+    "Fetch Hacker News": {
+      "main": [[{ "node": "Merge News", "type": "main", "index": 0 }]]
+    },
+    "Merge News": {
+      "main": [[{ "node": "AI Translate News", "type": "main", "index": 0 }]]
+    },
+    "AI Translate News": {
+      "main": [[{ "node": "Format News", "type": "main", "index": 0 }]]
+    },
+    "Format News": {
+      "main": [[{ "node": "Send News", "type": "main", "index": 0 }]]
+    },
+    "Get Containers": {
+      "main": [[{ "node": "Format Status", "type": "main", "index": 0 }]]
+    },
+    "Format Status": {
+      "main": [[{ "node": "Send Status", "type": "main", "index": 0 }]]
+    }
   },
-  "settings":{"executionOrder":"v1"}
+  "settings": { "executionOrder": "v1" }
 }

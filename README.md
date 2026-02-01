@@ -360,6 +360,94 @@ A: Intel N97 + 16GB RAM 足夠運行此系統加上多個 Laravel 專案容器�
 - 會議記錄 AI 整理
 - 每日科技新聞摘要
 
+## 目前開發進度
+
+> 最後更新：2026-02-01
+
+### Telegram Bot V3 (`telegram-bot-v3-fixed.json`) 指令狀態
+
+| 指令 | 狀態 | 說明 |
+|------|------|------|
+| `/start` | ✅ 正常 | Router 直接回覆歡迎訊息 |
+| `/help` | ✅ 正常 | Router 直接回覆使用說明 |
+| `/meeting` | ✅ 正常 | Router 直接回覆功能說明文字 |
+| `/status` | ⚠️ 待驗證 | 依賴 `docker-api-proxy:2375`，需確認 proxy 容器運行中 |
+| `/news` | ✅ 已修復 | 抓取 TechCrunch/The Verge/HN → AI 翻譯繁中 → 發送摘要 |
+| 語音訊息 | ⚠️ 卡住 | 見下方說明 |
+| 文字會議記錄 | ✅ 正常 | 文字 > 20 字自動走 AI 摘要流程 |
+
+### 本次修復 (2026-02-01)
+
+- [x] **`/news` 指令** — 新增 `Is News?` 判斷節點，內嵌 RSS 抓取 + Groq AI 翻譯流程
+- [x] **`1-docker-monitor.json`** — 修正 connections 節點名稱不匹配（`Every 3 minutes` → `Daily 7:30 AM`）
+- [x] **`4-tech-news.json`** — 統一 Groq API 認證方式，改用 `httpHeaderAuth` credential（與其他工作流一致）
+
+### 語音會議記錄 — 卡在 Telegram 20MB 限制
+
+**問題：** Telegram Bot API 的 `getFile` 方法限制檔案下載最大 **20MB**。長時間會議語音（超過約 10-15 分鐘）的 `.oga` 檔案容易超過此限制，導致下載失敗。
+
+**目前進度：**
+- [x] 語音下載 → 轉檔（FFmpeg OGA→MP3）→ 分段 → Whisper 轉文字 → AI 摘要 流程已完成
+- [x] 短語音（< 20MB）可正常運作
+- [ ] 長語音（> 20MB）因 Telegram Bot API 限制無法下載
+
+**計畫解法：架設 Telegram Bot API Server**
+- Telegram 官方提供 [Telegram Bot API Server](https://github.com/tdlib/telegram-bot-api) 可自架
+- 自架後檔案下載限制提升至 **2000MB**，完全解決此問題
+- 需要在 Docker 中新增一個 `telegram-bot-api` 容器
+- **狀態：尚未開始**
+
+### 已知待修問題
+
+1. ~~**`/news` 指令無作用**~~ ✅ 已修復
+2. **`/status` 需驗證** — 確認 `docker-api-proxy` 容器在目標環境正常運行
+3. **語音 20MB 限制** — 需架設 Telegram Bot API Server（見上方）
+
+## 開發路線圖 (Roadmap)
+
+### v2.0 — 智慧 Telegram Bot 升級（類 Moltbot 功能）
+
+> **目標：** 將現有 Telegram Bot 從單向通知升級為雙向互動式 AI 助理，達到類似 [Moltbot/OpenClaw](https://github.com/moltbot/moltbot) 的體驗，但 **零 API 費用**（持續使用 Groq 免費額度）。
+
+#### Phase 1：自然語言指令系統
+- [ ] Telegram Bot 接收自然語言訊息，透過 Groq API 解析使用者意圖
+- [ ] 支援指令範例：
+  - 「Docker 狀態怎樣？」→ 執行容器健康檢查並回報
+  - 「現在備份資料庫」→ 觸發手動備份
+  - 「今天有什麼科技新聞？」→ 立即抓取新聞摘要
+- [ ] 指令路由：AI 分類意圖 → 對應 n8n Webhook 觸發工作流
+
+#### Phase 2：Shell 指令執行
+- [ ] 透過 Telegram 下達 shell 指令，n8n 代為執行並回傳結果
+- [ ] 安全白名單機制（僅允許特定指令）
+- [ ] 指令確認機制（危險操作需二次確認）
+
+#### Phase 3：對話式互動
+- [ ] 上下文記憶（利用 n8n 變數或 SQLite 儲存對話歷史）
+- [ ] 多輪對話支援（例：追問備份細節、篩選新聞類別）
+- [ ] 定期主動回報（「今天有 2 個容器重啟過，要看詳情嗎？」）
+
+#### Phase 4：進階整合
+- [ ] 語音訊息支援（Telegram 語音 → Groq Whisper 轉文字 → AI 處理）
+- [ ] 檔案操作（透過 Telegram 上傳/下載備份檔）
+- [ ] 排程管理（透過對話新增/修改/刪除排程任務）
+
+### 設計原則
+
+| 原則 | 說明 |
+|------|------|
+| **零費用優先** | 持續使用 Groq 免費 API，不依賴付費 LLM |
+| **硬體友善** | 所有功能在 Intel N97 + 16GB DDR5 上流暢運行 |
+| **漸進式升級** | 基於現有 n8n 架構擴充，不需要額外安裝新系統 |
+| **安全第一** | Shell 執行白名單、指令確認、權限控管 |
+
+### 為什麼不直接用 Moltbot？
+
+- Moltbot 需要大型 LLM（建議 72B+ 模型）才能穩定使用工具呼叫
+- 本機 NUC 無獨顯，無法本地運行大模型
+- 使用 Claude API 每月約 $10-150 USD
+- **本方案：用 Groq 免費 API + n8n 工作流達到相同效果，$0 費用**
+
 ## 授權
 
 MIT License

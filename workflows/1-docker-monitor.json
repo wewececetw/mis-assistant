@@ -101,7 +101,7 @@
     }
   ],
   "connections": {
-    "Every 3 minutes": { "main": [[{ "node": "Get Containers", "type": "main", "index": 0 }]] },
+    "Daily 7:30 AM": { "main": [[{ "node": "Get Containers", "type": "main", "index": 0 }]] },
     "Get Containers": { "main": [[{ "node": "Parse Data", "type": "main", "index": 0 }]] },
     "Parse Data": { "main": [[{ "node": "Has Issues?", "type": "main", "index": 0 }]] },
     "Has Issues?": { "main": [
