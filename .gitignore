@@ -19,3 +19,7 @@ desktop.ini
 # IDE
 .vscode/
 .idea/
+
+# Claude Code / Serena 設定
+.claude/
+.serena/
