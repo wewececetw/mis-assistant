@@ -1,0 +1,12 @@
+# Git internals
+.git/
+
+# Logs & Backups (large files)
+logs/
+backups/
+
+# Database
+*.sqlite
+
+# Environment (sensitive)
+.env
